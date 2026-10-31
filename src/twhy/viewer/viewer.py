@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from time import monotonic
+from weakref import ref
 
 import numpy as np
 from prompt_toolkit import Application
@@ -32,6 +33,7 @@ from ..viewport import Viewport
 from .activity import ACTIVITY_INTERVAL, ACTIVITY_WIDTH, activity_fragments
 from .bindings import create_bindings
 from .contrast import ContrastController
+from .initial_contrast import STARTUP_CONTRAST_SECONDS, initial_contrast_config
 from .clipping import ClipController
 from .mode_navigation import ModeNavigation
 from .controls import (
@@ -72,6 +74,7 @@ class Viewer:
         self._startup_target: Viewport | None = None
         self._startup_generation: int | None = None
         self._startup_session: ViewSession | None = None
+        self._contrast_started_for = None  # weak reference: do not retain old plane sessions
         self.session = session
         self.navigation = navigation
         self.selected_channels = session._select_channels(channels)
@@ -299,6 +302,11 @@ class Viewer:
                 request = await self._startup_quick_fit(request)
             if request.generation != self.generation or self.selecting:
                 continue
+            # Compute a bounded base-pixel estimate BEFORE publishing the first
+            # frame. Never relight an already-visible image behind the user's back.
+            request = await self._prime_initial_contrast(request)
+            if request.generation != self.generation or self.selecting:
+                continue
             try:
                 result = await asyncio.get_running_loop().run_in_executor(
                     self._executor, make_frame, self.session, request
@@ -327,10 +335,68 @@ class Viewer:
             self.application.invalidate()
             if self.navigation is not None:
                 self.navigation.frame_displayed()
-            self.contrast.queue_automatic()
             # Give foreground requests priority. Idle iterations prepare only one
             # overview chunk each, off the UI thread and on this same executor.
             self._wake.set()
+
+    async def _prime_initial_contrast(self, request: FrameRequest) -> FrameRequest:
+        """Choose initial scalar display windows before publishing any glyphs.
+
+        At most one cooperative preflight runs for each image session. The full
+        statistical estimator remains available on H/A; its later result never
+        silently replaces an already displayed window. A slow source falls back
+        to the existing preview estimate after a modest work/time budget.
+        """
+        session = self.session
+        if (self.frame is not None or (self._contrast_started_for is not None and
+                                      self._contrast_started_for() is session) or
+                not self.contrast.automatic or self.contrast.explicit_window or
+                session.info.is_rgb or self.histogram_mode or
+                self.navigation is None or self.navigation.document.kind not in ("tiff", "zarr")):
+            return request
+        self._contrast_started_for = ref(session)
+        missing = tuple(c for c in request.channels if self.windows[c] is None)
+        if not missing:
+            return request
+        self.contrast.sync_source()
+        source = self.contrast.source
+        if source is None:
+            return request
+        from ..contrast import ContrastEstimator
+
+        config = initial_contrast_config(self.contrast.config)
+        deadline = monotonic() + STARTUP_CONTRAST_SECONDS
+        loop = asyncio.get_running_loop()
+        for channel in missing:
+            if monotonic() >= deadline or request.generation != self.generation:
+                break
+            job = None
+            try:
+                job = ContrastEstimator(source, channel=channel, config=config)
+                while (request.generation == self.generation and self._pending is None and
+                       (self.navigation is None or not self.navigation.loading) and
+                       monotonic() < deadline and not job.done):
+                    await loop.run_in_executor(self._executor, job.step)
+                if (job.done and job.result is not None and
+                        request.generation == self.generation and self._pending is None and
+                        self.session is session and channel not in self.contrast.manual):
+                    result = job.result
+                    self.contrast.startup_results[channel] = result
+                    if result.window is not None:
+                        self.windows[channel] = result.window
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # Contrast is a display suggestion, not permission to fail a
+                # valid image read. The first-frame preview remains the fallback.
+                pass
+            finally:
+                if job is not None:
+                    job.close()
+            await asyncio.sleep(0)
+        if request.generation == self.generation and self.session is session:
+            return replace(request, windows=tuple(self.windows))
+        return request
 
     async def _startup_quick_fit(self, request: FrameRequest) -> FrameRequest:
         """Try a short reduction before the first whole-image frame.

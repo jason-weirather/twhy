@@ -130,12 +130,12 @@ async def test_histogram_resize_and_sidebar_click_preserve_image_camera(stack):
 
 async def test_auto_estimate_applied_once_and_kept_over_z_t_and_pan(stack):
     async with contrast_view(stack, automatic=True, window=None) as (viewer, nav, pipe, _, task):
-        await eventually(lambda: len(viewer.contrast.results) == 2 and viewer.contrast.job is None,
-                         task)
         await ready(viewer, task)
-        estimates = dict(viewer.contrast.results)
+        estimates = dict(viewer.contrast.startup_results)
         windows = tuple(viewer.windows)
+        assert len(estimates) == 2
         assert tuple(estimate.window for estimate in estimates.values()) == windows
+        assert viewer.contrast.job is None  # Nothing relights this frame later.
         assert nav.active.z_index == 2 and nav.active.t_index == 0
         pipe.send_text(']')
         await eventually(lambda: nav.display_position == (0, 3, 0), task)
@@ -147,8 +147,8 @@ async def test_auto_estimate_applied_once_and_kept_over_z_t_and_pan(stack):
         viewer.zoom(1.25)
         await ready(viewer, task)
         assert tuple(viewer.windows) == windows
-        assert all(viewer.contrast.results[c] is estimates[c] for c in estimates)
-        assert viewer.contrast.job is None
+        assert all(viewer.contrast.startup_results[c] is estimates[c] for c in estimates)
+        assert not viewer.contrast.queue and viewer.contrast.job is None
 
 
 async def test_manual_edit_wins_over_inflight_automatic_estimate(stack, monkeypatch):
@@ -161,8 +161,9 @@ async def test_manual_edit_wins_over_inflight_automatic_estimate(stack, monkeypa
             assert release.wait(5)
         return original(job)
     monkeypatch.setattr(sampling.ContrastEstimator, 'step', delayed)
-    async with contrast_view(stack, automatic=True, window=None) as (viewer, _, pipe, _, task):
+    async with contrast_view(stack, automatic=False, window=None) as (viewer, _, pipe, _, task):
         try:
+            pipe.send_text('A')  # Explicit on-demand estimate, not background relighting.
             await eventually(entered.is_set, task)
             pipe.send_text('u\x01\x0b18000\r')
             await eventually(lambda: viewer.windows[0].upper == 18000, task)
@@ -264,9 +265,12 @@ async def test_histogram_z_t_navigation_reuses_estimate_then_renders_selected_pl
 
 async def test_histogram_payload_eviction_does_not_restart_automatic_sampling(stack):
     async with contrast_view(stack, automatic=True, window=None) as (viewer, _, _, _, task):
+        # Initial prepublication sampling does not imply a full background scan.
+        assert len(viewer.contrast.startup_results) == 2
+        viewer.contrast.request(0)
+        viewer.contrast.request(1)
         await eventually(lambda: len(viewer.contrast.results) == 2 and
                          viewer.contrast.job is None, task)
-        await ready(viewer, task)
         first, second = viewer.contrast.results.values()
         viewer.contrast.cache_budget = max(first.nbytes, second.nbytes)
         viewer.contrast._store_result(1, second)
@@ -375,7 +379,9 @@ async def test_manual_edit_wins_over_queued_not_yet_started_estimate(stack, monk
         return original(job)
 
     monkeypatch.setattr(sampling.ContrastEstimator, 'step', delayed)
-    async with contrast_view(stack, automatic=True, window=None) as (viewer, _, pipe, _, task):
+    async with contrast_view(stack, automatic=False, window=None) as (viewer, _, pipe, _, task):
+        viewer.contrast.request(0, apply=True)
+        viewer.contrast.request(1, apply=True)
         try:
             await eventually(entered.is_set, task)
             assert viewer.contrast.queue.get(1) is True

@@ -111,8 +111,8 @@ def _write_text(path: Path, text: str, *, overwrite: bool) -> None:
               help="Attempt a quick whole-slide cache before first view/snapshot (default: 2s); "
                    "0 skips startup scanning. Native reads can exceed a deadline.")
 @click.option("--stack-contrast/--no-stack-contrast", default=True,
-              help="Interactive intensity stacks: one bounded stack-wide contrast estimate; "
-                   "manual limits win. Snapshots keep explicit/preview windows.")
+              help="Interactive OME intensity images: bounded contrast sampling before "
+                   "the first frame; never rewindow later unless requested. Snapshots unchanged.")
 @click.option("--snapshot", is_flag=True, help="Render one text frame without starting the viewer.")
 @click.option("--columns", type=click.IntRange(min=1), default=120,
               help="Snapshot width in characters.")

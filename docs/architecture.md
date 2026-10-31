@@ -563,17 +563,21 @@ No coarse values enter the final base-pixel histogram; no new file reader,
 codec, dataset model, storage cache, or Omeify policy is introduced.
 
 `histogram.py` renders detached estimates as ordinary TextImage values plus
-handle coordinates. `viewer/contrast.py` owns one cooperative job, request
-revisions, manual-override protection, result retention, and mouse hit testing.
-It runs on the existing display executor. A single step reads one region or
+handle coordinates. `viewer/contrast.py` owns one cooperative full-estimate job,
+request revisions, manual-override protection, result retention, and mouse hit
+testing. `viewer/initial_contrast.py` supplies a smaller prepublication budget:
+OME-TIFF/Zarr scalar windows are chosen before the first frame or fall back
+to first-preview limits, **never applied silently after first presentation**.
+The quick result may draw an immediate histogram while a more detailed H/A
+request runs on the existing display executor. A step reads one region or
 finalizes the result; foreground frames take priority between steps. Selection
-pauses work; numeric entry defers automatic application. Queued automatic jobs
-lose permission to apply when a user edits that channel. Source changes cancel
-jobs safely between reads; source owners remain retained until cleanup.
+pauses work; numeric entry defers explicit application. Queued requests lose
+permission to apply when a user edits that channel. Source changes cancel jobs
+safely between reads; source owners remain retained until cleanup.
 
-Completed windows remain stable across Z/T. A 32 MiB array-payload result LRU
-can discard histograms without restarting automatic estimation or changing
-windows. Paint callbacks consume only detached results. Per-channel sampling
+Completed windows remain stable across Z/T and background histogram work.
+A 32 MiB array-payload result LRU can discard detailed histograms without
+changing windows. Paint callbacks consume only detached results. Per-channel sampling
 budgets bound returned samples/requests, not encoded chunks, native codec
 scratch, temporary NumPy allocations, or process RSS. No hard wall-time promise
 is made for a native call. See contrast-estimation.md for exact statistics and

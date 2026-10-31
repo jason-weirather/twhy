@@ -161,11 +161,13 @@ backend is missing. See `docs/validation.md` for what was actually executed.
 
 ## Stable contrast and uninterrupted presentation
 
-Scalar stack opening starts with a provisional preview window, then the
-bounded estimator applies one dataset-wide window per selected channel.
-Navigation does not re-estimate contrast. Manual controls or explicit startup
-limits take precedence; `--no-stack-contrast` disables this automatic work.
-H/A make histograms and explicit recommendations available on demand. See
+For OME-TIFF and OME-Zarr intensity sources, including ordinary 2D images,
+a bounded base-pixel-guided estimate runs **before the first frame**, when fast
+enough. Otherwise the initial preview estimate is retained. In neither case
+does a later background computation silently change the displayed limits.
+Z/T navigation does not recalculate contrast; manual and explicit startup limits
+are preserved. `--no-stack-contrast` disables the initial sampling work. H/A
+request detailed histograms and explicit rewindowing on demand. See
 [the method and histogram controls](contrast-estimation.md).
 
 The last completed character grid and its matching Z/T label remain visible

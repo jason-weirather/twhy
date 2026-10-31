@@ -32,14 +32,34 @@ if needed. **a** retains the earlier visible-preview auto-window behavior. An
 explicit adjustment, including a/gamma/limit editing, protects that channel from
 an automatic result already in flight. H alone does not apply a recommendation.
 
-Interactive scalar stacks begin at middle Z (`size // 2`) and T=0, unless explicit
-indices are supplied. The existing preview window is provisional. The viewer
-incrementally estimates each selected channel's dataset-wide range and applies
-it once when ready. Z/T, pan and zoom never automatically recalculate that range.
-A different series gets separate estimates. `--no-stack-contrast` disables the
-initial automatic work; H and A remain available. An explicit startup window is
-never automatically replaced. Ordinary 2D startup and snapshot contrast retain
-their prior policy; snapshots now share the middle-Z startup choice.
+Interactive scalar OME-TIFF and OME-Zarr sources (both ordinary 2D mIF and
+Z/T stacks) try a **single bounded prepublication** estimate for each initially
+selected channel. A quick frozen-pilot/base-pixel experiment finishes before the
+first glyph frame or is abandoned after a cooperative 1.25-second budget.
+One source read may exceed that budget. If sampling is incomplete, the first
+preview supplies its window. **In either case those limits are locked before the
+image appears; no later automatic result changes them.** Z/T, pan and zoom retain
+the same windows. A new series gets its own startup attempt. Missing or rare
+signal may escape a bounded estimate; this is not an accuracy guarantee.
+
+The startup experiment caps base draws at 24 and pilot reads at 12, with at most
+24,576 returned base and pilot samples each. It omits the bootstrap. These are
+startup performance settings, not changes to the full public estimator. The
+viewer also uses `highlight_quantile=0.90` by default, rather than the reusable
+library's more conservative 0.995, to leave more intensity detail visible in
+broad bright tails. Both values are explicit **display preferences**; they do
+not distinguish biology from artifacts. Callers can pass a `ContrastConfig` to
+choose a different policy.
+
+**H** estimates the full distribution of the focused channel on demand, using
+its complete configured budget and bootstrap. An initial quick histogram is
+shown immediately if it exists, then replaced by the more detailed estimate.
+Neither histogram computation nor channel focus changes the displayed limits.
+**A** is the explicit command to apply the detailed recommendation, and may
+visibly rewindow the image because the user asked it to. `--no-stack-contrast`
+disables automatic prepublication sampling, not H/A. Explicit startup limits
+never get replaced. Ordinary RGB, PDF, raster-file, and non-file-backed embedded
+viewer behavior is unchanged; snapshots retain their prior contrast behavior.
 
 ### Public library
 
@@ -228,11 +248,13 @@ array-payload LRU, enlarged only to fit one explicitly larger configured
 experiment. Eviction never resets display windows or restarts automatic sampling.
 Opening an evicted histogram can repeat that channel's seeded experiment.
 
-Manual edits outrank late automatic results. Selections pause work and defer
-application. Source changes cancel old jobs between reads; retained owners survive
-until in-flight work is joined. A paint callback only reads detached histogram
-results. Dragging handles performs no new statistical sampling. Histogram cells
-cannot be exported as image-coordinate selections.
+Manual edits outrank queued or in-flight **explicitly requested** applications.
+No background histogram computation is permitted to adjust an already presented
+image. Selections pause work and defer explicit application. Source changes cancel
+old jobs between reads; retained owners survive until in-flight work is joined.
+A paint callback only reads detached histogram results. Dragging handles performs
+no new statistical sampling. Histogram cells cannot be exported as image-coordinate
+selections.
 
 Z/T handoffs keep the last completed glyph grid and its old label while the new
 plane renders. The new label is published with its new frame; obsolete frames

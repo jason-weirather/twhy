@@ -751,15 +751,20 @@ there is no cross-series marker-name matching or persistent palette in this pass
 
 ### Stack-wide estimates and text histograms
 
-Interactive scalar Z/T stacks automatically perform one fixed-budget estimate
-per selected channel, on the existing display worker between foreground reads.
-The initial preview limits are provisional; a completed estimate is applied
-once, not per section. Any manual limit/gamma edit or visible-preview `a`
-protects that channel from queued and in-flight automatic applications. Explicit
-CLI `--lower`/`--upper` limits are never automatically replaced.
-`--no-stack-contrast` disables automatic estimation, but H/A remain available.
-Ordinary 2D opening and snapshot contrast retain the preview policy. Snapshots
-share the new middle-Z/T=0 default but do not launch a dataset contrast scan.
+Interactive OME-TIFF/Zarr scalar images, including ordinary 2D mIF, try a
+small, base-pixel-guided estimate **before the first frame** for each initially
+selected channel. The cooperative overall 1.25-second budget permits at most
+24 base draws, 12 pilot reads, and 24,576 returned samples in each phase per
+channel. An unfinished estimate is discarded and the initial preview provides
+that channel's limits instead. A backend read can exceed the time budget.
+**No late automatic estimate changes the contrast of an already displayed image.**
+The viewer's default highlight-mass percentile is 90%, versus 99.5% for the
+public estimator; this is a display choice intended to retain more midtone detail,
+not biological inference. Custom ContrastConfig settings remain honored.
+Explicit CLI/manual limits are never automatically replaced. `--no-stack-contrast`
+skips the prepublication sampling; H/A retain their detailed, on-demand behavior.
+Raster/PDF and library/snapshot contrast are unchanged. Snapshots continue to
+start at middle Z/T=0 without starting a stack contrast scan.
 
 H replaces only the plot area, not the selected source or image camera. The
 histogram follows channel focus. Clicking a channel label in this mode changes

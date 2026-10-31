@@ -136,10 +136,13 @@ axis between log and linear. **A** applies a dataset-wide recommendation;
 **a** still estimates from the current visible preview. Channel focus changes
 which histogram is shown without changing image geometry.
 
-Scalar Z/T stacks get one bounded, incremental estimate per selected channel,
-then retain fixed limits across navigation. Manual limits win over late results.
-Use `--no-stack-contrast` to disable automatic estimation. Histogram sampling and
-recommendations remain available on demand for ordinary 2D images too.
+OME-TIFF and OME-Zarr intensity images (2D or Z/T) now try a small, bounded
+base-pixel estimate **before** the first image frame. The chosen limits remain
+fixed across navigation: there is no delayed automatic brightness jump. A slow
+source falls back to the preview estimate without changing it later. Use
+`--no-stack-contrast` to skip this initial work. **H** requests a detailed
+histogram without altering the displayed range; **A** explicitly applies its
+recommendation.
 
 The reusable `estimate_contrast(image_or_dataset, channel=...)` library uses a
 coarse pilot to guide probability-weighted **base-resolution** tile samples.

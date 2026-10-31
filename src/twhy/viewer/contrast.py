@@ -19,12 +19,17 @@ class ContrastController:
 
     def __init__(self, viewer, *, config=None, automatic=True, explicit_window=False):
         self.viewer = viewer
-        self.config = config or ContrastConfig()
+        # The library default protects almost all excess intensity. A viewer
+        # needs slightly more headroom for visible midtones, especially in
+        # fluorescence stacks with a broad bright tail. Keep the statistical
+        # library policy independent of this presentation preference.
+        self.config = config or ContrastConfig(highlight_quantile=0.90)
         self.automatic = automatic
         self.explicit_window = explicit_window
         self.key = None
         self.source = None
         self.results = OrderedDict()
+        self.startup_results = {}
         self.completed = set()
         # Windows outlive histogram payload eviction. The cache fits at least one
         # explicitly enlarged experiment, otherwise defaults to 32 MiB.
@@ -57,6 +62,7 @@ class ContrastController:
         self.close_job()
         self.key, self.source = key, source
         self.results.clear()
+        self.startup_results.clear()
         self.completed.clear()
         self.errors.clear()
         self.queue.clear()
@@ -98,14 +104,12 @@ class ContrastController:
             self.viewer._wake.set()
 
     def queue_automatic(self):
+        """Sample a focused histogram on demand, without changing image limits.
+
+        Initial display windows are chosen before the first frame by Viewer.
+        Later estimates are never automatically applied to a visible image.
+        """
         self.sync_source()
-        nav = self.viewer.navigation
-        is_stack = (nav is not None and nav.active.dataset is not None and
-                    any(axis.size > 1 for axis in nav.active.axis_info))
-        if self.automatic and is_stack and not self.viewer.session.info.is_rgb:
-            for channel in self.viewer.selected_channels:
-                if channel not in self.manual and channel not in self.completed:
-                    self.request(channel, apply=True)
         if self.viewer.histogram_mode:
             self.request(self.viewer.focused_channel)
 
@@ -197,14 +201,15 @@ class ContrastController:
     def content(self, width, height):
         """Only uses detached results. Never reads pixels from paint callbacks."""
         channel = self.viewer.focused_channel
-        estimate = self.results.get(channel)
+        estimate = self.results.get(channel) or self.startup_results.get(channel)
         if estimate is None:
             message = self.errors.get(channel, self.status or "Contrast sampling queued...")
             self.plot = None
             return [[("class:panel.title", f" Histogram C{channel}")],
                     [("class:status", " " + safe_label(message))],
                     [("class:status", " H: image | A: estimate/apply | l/u: limits")]]
-        self.results.move_to_end(channel)
+        if channel in self.results:
+            self.results.move_to_end(channel)
         window = self.viewer.windows[channel] or estimate.window
         renderer = self.viewer.renderer
         use_color = renderer.color and self.viewer.mode_navigation.family != "ascii"
@@ -264,6 +269,7 @@ class ContrastController:
         self.close_job()
         self.queue.clear()
         self.results.clear()
+        self.startup_results.clear()
         self.deferred = None
         self.plot = None
         self._lines = []
