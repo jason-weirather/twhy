@@ -12,9 +12,20 @@ In the viewer, **H** switches the canvas between image and histogram. The plot
 follows the focused channel. Clicking a channel name while viewing a histogram
 changes focus without toggling that channel's image visibility. **L** changes
 only the histogram's count axis between log and linear; intensities stay linear
-and in raw units. Drag **^L** or **^U**, or use the existing **l/u** numeric entry.
+and in raw units. Drag the **L/U triangles** on the range rail (carets in strict
+ASCII), or use the existing **l/u** numeric entry.
 The current clipped fractions are estimated from the weighted base-pixel sample.
 Intervals refer to the *suggested* cutoff, not a manually dragged limit.
+
+The histogram uses an unsmoothed bin skyline with subdued fill, readable count
+and intensity ticks, and a display-range rail. Clipped tails are dimmed, never
+removed from the distribution. Dotted guides connect the limits to the plot;
+labels stay below the controls without overlapping. A diamond marks coincident
+limits: drag its left/right side for L/U, or enter exact values. Colors follow the
+focused channel; monochrome and strict-ASCII forms retain the same coordinates.
+Compact tick/interval labels use k/M/G/T suffixes; exact values remain available
+in numeric entry and the detached estimate. Short terminals prioritize limits
+and warnings over the full diagnostic summary; enlarge for the complete view.
 
 **A** applies the focused channel's dataset/image recommendation, estimating it
 if needed. **a** retains the earlier visible-preview auto-window behavior. An

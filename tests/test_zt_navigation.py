@@ -284,7 +284,9 @@ async def test_rapid_cross_axis_requests_discard_obsolete_loads(stack_file, monk
             nav.go_plane(z_index=1, t_index=0)
             await eventually(started.is_set, task)
             assert nav.active.position == (0, 0, 0)
-            assert "opening series 0 Z=1 T=0" in nav.status()
+            assert viewer.activity_pending
+            assert "opening" not in nav.status()
+            assert nav.display_position == (0, 0, 0)
             for z, t in ((2, 0), (3, 1), (4, 2)):
                 nav.go_plane(z_index=z, t_index=t)
             release.set()

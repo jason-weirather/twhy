@@ -83,6 +83,13 @@ completed old load/frame is discarded. The old displayed plane retains its own
 label while loading, then handoff occurs between reads. Quitting joins outstanding
 work before closing sources. Native codec/network work cannot be forcibly
 interrupted; no guaranteed navigation latency or process-wide RAM cap is claimed.
+
+Routine Z/T changes do not print transient opening/rendering/completion messages.
+A five-cell activity slot at the top right carries a small three-dot pulse while
+work is pending. It never changes the title width or submits image reads. In
+full-terminal mode it temporarily overlays the corner, without resizing the
+canvas, then disappears. The last completed grid and its Z/T labels remain paired
+until the next frame is ready. Errors remain explicit in the navigation/footer.
 Omeify speculative prefetch is not enabled in this first integration.
 
 Series-count discovery uses one separate public Omeify metadata inspection at

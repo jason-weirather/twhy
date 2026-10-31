@@ -229,6 +229,10 @@ class ContrastController:
                 distances = (abs(x - plot.lower_column), abs(x - plot.upper_column))
                 if min(distances) <= 3:
                     field = "lower" if distances[0] <= distances[1] else "upper"
+                    if plot.lower_column == plot.upper_column:
+                        # Coincident handles share a diamond; either side still
+                        # selects its own endpoint, with l/u for exact entry.
+                        field = "lower" if x <= plot.lower_column else "upper"
                     # Freeze both channel and mapping for the entire drag.
                     self.drag = viewer.focused_channel, field, plot
                     self.protect(viewer.focused_channel)

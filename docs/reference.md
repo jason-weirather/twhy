@@ -220,7 +220,10 @@ A Z/T step preserves the exact base-pixel camera, selected channels, focused
 channel, pseudocolors, contrast windows, gamma and rendering mode. It uses another
 immutable plane Image from the same source session, not a reopened file/store.
 Rapid requests coalesce, old frames keep their old labels while loading, and
-obsolete completions cannot overwrite the latest request. New plane handoffs
+obsolete completions cannot overwrite the latest request. A fixed top-right three-dot
+pulse replaces routine Z/T opening/rendering text; it does not move controls or
+trigger image reads. Full-terminal mode uses a temporary corner overlay. Errors
+remain visible. New plane handoffs
 wait for any in-flight read and do not trigger another timed startup scan.
 
 Only the selected Image's exact-section pyramid participates in automatic zoom.

@@ -29,6 +29,7 @@ from ..terminal_capabilities import configured_color_depth
 from ..text_renderer import DEFAULT_RAMP, TEXT_MODES, TextRenderer
 from ..view_session import ViewSamples, ViewSession
 from ..viewport import Viewport
+from .activity import ACTIVITY_INTERVAL, ACTIVITY_WIDTH, activity_fragments
 from .bindings import create_bindings
 from .contrast import ContrastController
 from .clipping import ClipController
@@ -97,7 +98,9 @@ class Viewer:
         self.contrast = ContrastController(self, config=contrast_config, automatic=stack_contrast,
                                            explicit_window=window is not None)
         self.message = "Opening image..."
+        self._presented_image_status = " "
         self.busy = False
+        self._overview_busy = False
         self.generation = 0
         self.displayed_generation = -1
         self._pending: FrameRequest | None = None
@@ -150,7 +153,11 @@ class Viewer:
         body = VSplit([Window(self.canvas, style="class:image", always_hide_cursor=True), panel])
         container = HSplit([
             ConditionalContainer(
-                Window(FormattedTextControl(self._title), height=1, style="class:title"),
+                VSplit([
+                    Window(FormattedTextControl(self._title), height=1, style="class:title"),
+                    Window(FormattedTextControl(lambda: activity_fragments(self)),
+                           height=1, width=ACTIVITY_WIDTH, style="class:activity"),
+                ]),
                 filter=Condition(lambda: not self.image_only),
             ),
             ConditionalContainer(
@@ -174,6 +181,13 @@ class Viewer:
         # In image-only mode, entry overlays one row instead of resizing the
         # frozen canvas and throwing away the user's selections.
         container = FloatContainer(container, floats=[Float(
+            right=0, top=0, width=ACTIVITY_WIDTH, height=1,
+            content=ConditionalContainer(
+                Window(FormattedTextControl(lambda: activity_fragments(self)),
+                       style="class:activity", always_hide_cursor=True),
+                filter=Condition(lambda: self.image_only and self.activity_pending),
+            ),
+        ), Float(
             left=0, right=0, bottom=0, height=1,
             content=ConditionalContainer(self.entry, filter=Condition(
                 lambda: self.image_only and self.editing is not None)),
@@ -189,6 +203,8 @@ class Viewer:
                 "panel.selected": "bg:#31415b #ffffff bold", "divider": "#405570",
                 "status": "bg:#253247 #d7e1f0", "footer": "bg:#141c29 #a8b7cc",
                 "entry": "bg:#394a63 #ffffff",
+                "activity": "bg:#253247 #83d5c8 bold",
+                "activity.dim": "bg:#253247 #536781 nobold",
                 "clip.border": "bg:#ffd75f #000000 bold",
                 "clip.cursor": "bg:#ffffff #000000 bold reverse",
                 "clip.button": "bg:#31415b #ffffff bold",
@@ -205,10 +221,12 @@ class Viewer:
         self.application = self._build_application(input, output)
         if self.navigation is not None:
             self.navigation.start(self)
+        def start_tasks():
+            self.application.create_background_task(self._pump())
+            self.application.create_background_task(self._animate_activity())
+
         try:
-            await self.application.run_async(
-                pre_run=lambda: self.application.create_background_task(self._pump())
-            )
+            await self.application.run_async(pre_run=start_tasks)
         finally:
             # Worker cancellation does not interrupt a TIFF codec. Join before
             # allowing the caller to leave its source context manager.
@@ -225,6 +243,32 @@ class Viewer:
                     self.navigation.close()
                 else:
                     self.session.clear_cache()
+
+    @property
+    def activity_pending(self) -> bool:
+        """Presentation/loading/analysis work, with no source access from painting."""
+        nav = self.navigation
+        moving = nav is not None and (
+            nav.loading or nav.pending is not None or
+            (nav.presentation_pending and not self.histogram_mode)
+        )
+        contrast = (not self.selecting and self.editing is None and
+                    (self.contrast.job is not None or bool(self.contrast.queue)))
+        return bool(self.busy or moving or self._overview_busy or contrast)
+
+    async def _animate_activity(self) -> None:
+        """Redraw only during work or its final transition, never request a frame.
+
+        Application owns and cancels this small timer task on shutdown. The
+        existing display worker remains the only image-render/contrast worker.
+        """
+        was_active = False
+        while True:
+            await asyncio.sleep(ACTIVITY_INTERVAL)
+            active = self.activity_pending
+            if active or was_active:
+                self.application.invalidate()
+            was_active = active
 
     async def _pump(self) -> None:
         while True:
@@ -331,7 +375,12 @@ class Viewer:
             return
         session = self.session
         channels = tuple(self.selected_channels)
-        progress = await asyncio.get_running_loop().run_in_executor(self._executor, step, channels)
+        self._overview_busy = True
+        try:
+            progress = await asyncio.get_running_loop().run_in_executor(
+                self._executor, step, channels)
+        finally:
+            self._overview_busy = False
         self.application.invalidate()
         # Selection can begin while a chunk is decoding. Cache publication must
         # never replace that frozen frame or trigger a competing request.
@@ -832,8 +881,12 @@ class Viewer:
         if self.histogram_mode:
             return (" Histogram | " + safe_label(self.contrast.status or
                     "full series/image distribution; limits remain fixed across Z/T"))
+        if self.samples is None:
+            # Keep metadata attached to the completed grid during a plane handoff.
+            # At initial startup there is no frame/status to publish yet.
+            return self._presented_image_status if self.frame is not None else " "
         view = self.viewport
-        level = "?" if self.samples is None else str(self.samples.plan.level.index)
+        level = str(self.samples.plan.level.index)
         if self.samples is not None and self.samples.plan.level.approximate:
             level += " extent-fit"
         if self.samples is not None and self.samples.plan.sampled_overview is not None:
@@ -846,9 +899,12 @@ class Viewer:
         calibration = "uncalibrated" if size is None else f"{size[0]:g} x {size[1]:g} {size[2]}/px"
         mode_label = (self.mode_navigation.label if self.mode_navigation.family == "ascii"
                       else self.renderer.mode + (" mono" if not self.renderer.color else ""))
-        return (f" {'loading' if self.busy else 'ready'} | L{level} | {mode_label} "
-                f"| x={view.x + view.width / 2:,.0f} y={view.y + view.height / 2:,.0f} "
-                f"| {view.width / max(1, self.canvas_size[0]):.2f} px/col | {calibration}")
+        self._presented_image_status = (
+            f" Image | L{level} | {mode_label} "
+            f"| x={view.x + view.width / 2:,.0f} y={view.y + view.height / 2:,.0f} "
+            f"| {view.width / max(1, self.canvas_size[0]):.2f} px/col | {calibration}"
+        )
+        return self._presented_image_status
 
     def _footer(self):
         buttons = clip_fragments(self)

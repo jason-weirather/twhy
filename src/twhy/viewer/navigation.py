@@ -103,6 +103,11 @@ class DocumentNavigation:
         return not self._matches_target(self.active)
 
     @property
+    def presentation_pending(self) -> bool:
+        """The active source is waiting for its first completed image frame."""
+        return self._rollback is not None
+
+    @property
     def destination_label(self) -> str:
         return {"Z": "Z plane", "T": "time point"}.get(self.axis, self.document.label)
 
@@ -430,11 +435,10 @@ class DocumentNavigation:
             if viewer.frame is None:
                 self.presented_position = item.position
                 self.presented_name = self.document.item_name(item)
-        viewer.message = ("Rendering requested plane; previous completed view retained."
-                          if plane_change else
-                          f"Detail ready: {item.dpi:g} DPI. Zoom and contrast preserved."
-                          if same_page and item.dpi else
-                          f"Opened {self.document.label} {item.index}.")
+        if not plane_change:
+            viewer.message = (f"Detail ready: {item.dpi:g} DPI. Zoom and contrast preserved."
+                              if same_page and item.dpi else
+                              f"Opened {self.document.label} {item.index}.")
         if viewer.viewport is None:
             viewer.fit()
         elif plane_change:
@@ -470,12 +474,9 @@ class DocumentNavigation:
 
     def frame_displayed(self) -> None:
         """Publish labels with completed pixels; then consider PDF refinements."""
-        changed = self.presented_position != self.active.position
         self.presented_position = self.active.position
         self.presented_name = self.document.item_name(self.active)
         self._release_rollback()
-        if changed and self.document.is_ome:
-            self.viewer.message = "Plane changed; view, channels and contrast preserved."
         if self._closed or self.document.kind != "pdf" or self.active.index != self.target:
             return
         cached = self.cache.get(self.target)
@@ -561,14 +562,10 @@ class DocumentNavigation:
                 text += f" | {axis.name} {index}/{axis.size - 1}"
         if compact and doc.is_ome:
             text = ""
-        if self.loading:
+        if self.loading and not doc.is_ome:
             text += f" | opening {doc.label} {self.target}"
             if self.target == self.active.index:
                 text += f" Z={self.target_z} T={self.target_t}"
-        if self._rollback is not None and not self.viewer.histogram_mode:
-            _, shown_z, shown_t = self.presented_position
-            text += (f" | showing Z={shown_z} T={shown_t}; rendering "
-                     f"Z={self.active.z_index} T={self.active.t_index}")
         if doc.kind == "pdf":
             text += f" | {self.active.dpi:g}/{doc.dpi_steps[-1]:g} DPI"
             current = sorted(dpi for page, dpi, epoch in self.building

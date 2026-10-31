@@ -25,8 +25,8 @@ def test_handles_match_raw_intensity_coordinates(estimate):
     window = IntensityWindow(30, 140)
     view = render_histogram(estimate, window=window, columns=100, rows=25,
                             color=(0., 1., 1.))
-    assert view.frame.characters[view.handle_row, view.lower_column] == '^'
-    assert view.frame.characters[view.handle_row, view.upper_column] == '^'
+    assert view.frame.characters[view.handle_row, view.lower_column] == '▲'
+    assert view.frame.characters[view.handle_row, view.upper_column] == '▲'
     delta = (view.maximum - view.minimum) / (view.right - view.left)
     assert abs(view.value_at(view.lower_column) - 30) <= delta
     assert abs(view.value_at(view.upper_column) - 140) <= delta
