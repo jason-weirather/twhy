@@ -118,7 +118,6 @@ class ViewSession:
         self._budget = int(cache_mib * 1024 * 1024)
         self._cache: OrderedDict[ReadPlan, ViewSamples] = OrderedDict()
         self._cache_bytes = 0
-        self._cached_pair: tuple[int, int] | None = None
         self._lock = RLock()
         self._context_active = False
 
@@ -195,10 +194,6 @@ class ViewSession:
             selected = self._select_channels(channels)
 
             def read(channel, level, bounds):
-                pair = (channel, level)
-                if self._cached_pair is not None and pair != self._cached_pair:
-                    self._image.clear_cache()
-                self._cached_pair = pair
                 return self._image[channel].read_region(*bounds, level=level)
 
             progress = self._overviews.step(self.info, selected, self.max_read_pixels, read)
@@ -227,7 +222,6 @@ class ViewSession:
         with self._lock:
             self.clear_cache()
             self._image.close()
-            self._cached_pair = None
 
     def __enter__(self) -> ViewSession:
         self._require_image_open()
@@ -351,10 +345,6 @@ class ViewSession:
                 elif cached is not None:
                     preview = cached[position].sample(plan.viewport, rows=rows, columns=columns)
                 else:
-                    pair = (channel, plan.level.index)
-                    if self._cached_pair is not None and pair != self._cached_pair:
-                        self._image.clear_cache()
-                    self._cached_pair = pair
                     if overview is not None:
                         # Each native region is small. Sum of all such reads,
                         # including every RGB sample/selected channel, is <=budget.

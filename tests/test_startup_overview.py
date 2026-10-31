@@ -245,26 +245,24 @@ async def test_explicit_initial_region_is_preserved_when_whole_fit_is_default():
             await asyncio.wait_for(task, 8)
 
 
-def test_snapshot_full_slide_from_quick_cache_and_sparse_fallback(mif):
+def test_snapshot_full_slide_from_quick_cache_and_sparse_fallback(mif, tmp_path):
     path = str(mif[0])
     base = [path, "--snapshot", "--columns", "31", "--rows", "13",
             "--max-read-pixels", "100"]
-    completed = CliRunner().invoke(main, base)
-    assert completed.exit_code == 0, completed.output
-    assert "Cached full-coverage overview" in completed.output
-    assert len(completed.stdout.splitlines()) == 13
-    assert all(len(line) == 31 for line in completed.stdout.splitlines())
-    assert completed.stdout.endswith("\n")
-    sampled = CliRunner().invoke(main, [*base, "--startup-overview-seconds", "0"])
-    assert sampled.exit_code == 0, sampled.output
-    assert "Sampled overview" in sampled.output
-    assert len(sampled.stdout.splitlines()) == 13
-    assert all(len(line) == 31 for line in sampled.stdout.splitlines())
-    assert sampled.stdout.endswith("\n")
-    disabled = CliRunner().invoke(main, [*base, "--overview-cache-mib", "0"])
-    assert disabled.exit_code == 0, disabled.output
-    assert "Sampled overview" in disabled.output
-    assert len(disabled.stdout.splitlines()) == 13
+    cases = [([], "Cached full-coverage overview"),
+             (["--startup-overview-seconds", "0"], "Sampled overview"),
+             (["--overview-cache-mib", "0"], "Sampled overview")]
+    for index, (options, diagnostic) in enumerate(cases):
+        output = tmp_path / f"snapshot-{index}.txt"
+        result = CliRunner().invoke(main, [*base, *options, "-o", str(output)])
+        assert result.exit_code == 0, result.output
+        assert diagnostic in result.output
+        # Snapshot contents are independent of Click's version-specific stderr
+        # mixing in its test runner. Diagnostics are not extra rendered rows.
+        text = output.read_text()
+        assert len(text.splitlines()) == 13
+        assert all(len(line) == 31 for line in text.splitlines())
+        assert text.endswith("\n")
 
 
 def test_snapshot_deadline_is_checked_between_chunks(monkeypatch, mif):

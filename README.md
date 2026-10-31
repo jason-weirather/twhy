@@ -2,7 +2,7 @@
 
 **Whole-slide microscopy, ordinary images, and scientific PDFs, right in your terminal.**
 
-`twhy` is a zoomable, full-screen image viewer made of *actual terminal characters*. Open an OME-TIFF, SVS, or OME-Zarr slide, explore multichannel fluorescence, inspect a PNG, or page through a PDF. No browser, image server, X11, graphics protocol, or GPU required.
+`twhy` is a zoomable, full-screen image viewer made of *actual terminal characters*. Open an OME-TIFF, SVS, or OME-Zarr slide, explore multichannel fluorescence and Z/T stacks, inspect a PNG, or page through a PDF. No browser, image server, X11, graphics protocol, or GPU required.
 
 I had a use case for this on a remote cluster with thousands of images. Sometimes
 I just needed the tissue's shape, a rough count of regions of interest, or to tell
@@ -69,6 +69,12 @@ From a cloned checkout, for development:
 python -m pip install -e '.[dev]'
 ```
 
+The `t_z_support` branch requires the updated **Omeify `z_t_support` checkout
+at `74bf991` or a descendant with the same dataset API**, installed in the same
+Python environment. Its metadata version is 0.22.2; that version alone does not
+identify the branch revision. Install your local Omeify checkout before installing
+this twhy branch. [Z/T setup and examples](docs/z_t_support.md).
+
 PDF support is **included** in the standard install. No special extra or system PDF converter is needed.
 
 ## Quickstart
@@ -79,6 +85,8 @@ twhy paper.pdf                         # page navigation and progressive detail
 twhy slide.svs                         # Aperio whole-slide RGB
 twhy slide.ome.tif                     # OME-TIFF, grayscale or multichannel
 twhy /data/sample.ome.zarr             # local OME-Zarr
+twhy time-depth.ome.tif                # first Z/T plane; d chooses navigation axis
+twhy experiment.zarr --z-index 15 --t-index 12  # explicit zero-based startup plane
 
 # Compose two fluorescence channels with chosen colors:
 twhy slide.ome.tif --channel 0 --channel 2 \
@@ -86,6 +94,13 @@ twhy slide.ome.tif --channel 0 --channel 2 \
 ```
 
 The initial view fits the image. Wheel zoom is anchored to the pointer; pan with the mouse or arrow keys. The terminal sidebar keeps channels, colors, and contrast controls at hand.
+
+Z/T changes preserve the camera, channels, colors and contrast. A new series still
+fits and initializes its own channels. Omitted startup Z/T indices use zero for
+axes present in the source; invalid explicit indices fail. Only exact-section
+pyramid levels are used automatically, including when the input stores an XYZ
+pyramid. [Navigation, limitations, and public test inputs](docs/z_t_support.md).
+
 
 ## Why a terminal viewer?
 
@@ -103,7 +118,8 @@ The initial view fits the image. Wheel zoom is anchored to the pointer; pan with
 | Action | Key or gesture |
 |---|---|
 | Zoom; pan; fit image | Wheel or `+`/`-`; arrows or drag; `r`/Home |
-| Next/previous PDF page or OME series | `]` / `[` or PageDown / PageUp; `p` to jump |
+| Choose navigation dimension | `d`, or click Z / T / Series in the navigation bar |
+| Step/jump within that dimension | `]` / `[` or PageDown / PageUp; `p` to jump (PDF pages remain one-based) |
 | Toggle a channel; focus another | Click channel/Space; `,` and `.` |
 | Adjust channel color or contrast | `h` (hue); `l`/`u` (limits); `g` (gamma); `a` (auto window) |
 | Switch artwork / strict ASCII | `m` / `M`; `t` toggles artwork color; `f` toggles fullscreen |
@@ -140,9 +156,12 @@ channels from the selected series. Omit `--shatter by_index` to put the regions
 into separate image series in one OME-TIFF instead.
 
 **Full-resolution pixels, not a screenshot:** Omeify reads the original image,
-not the terminal preview. Polygon crops use their **bounding rectangles**, not
-polygon masks; keep the GeoJSON for the outlines. Use the same source image,
-series, and orientation in both steps. Annotation placement follows the terminal
+not the terminal preview. Omeify writes each polygon's enclosing rectangle and
+masks pixels outside the polygon by default; keep the GeoJSON for the outlines.
+Use the same source image,
+series, Z/T plane, and orientation in both steps. Z/T indices are not embedded
+in the anonymous GeoJSON; record them and pass matching `--z-index`/`--t-index`
+to Omeify when cropping a stack. Annotation placement follows the terminal
 grid, so zoom in before drawing for finer boundaries.
 [More crop options](https://github.com/jason-weirather/omeify/blob/main/docs/regions.md).
 
@@ -150,9 +169,9 @@ grid, so zoom in before drawing for finer boundaries.
 
 | Format | What twhy does |
 |---|---|
-| OME-TIFF | Regional, pyramidal microscopy viewing and channel composition |
+| OME-TIFF | Regional microscopy viewing, channels, series, Z slices and time points |
 | Aperio SVS | RGB whole-slide viewing using available stored levels |
-| OME-Zarr | Local and HTTP(S) stores, regional chunk reads, supported NGFF multiscales |
+| OME-Zarr | Local/HTTP(S)/optional S3, regional reads, series and Z/T navigation |
 | PNG, JPEG, WebP, BMP, TGA, PPM | Ordinary raster viewing with zoom and pan |
 | GIF, APNG, animated WebP | View a selected frame (not animation playback) |
 | PDF | Navigate pages; progressively improve raster detail; copy embedded text from a rectangular selection |

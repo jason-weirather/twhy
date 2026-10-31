@@ -58,3 +58,15 @@ def test_distribution_import_and_command_share_twhy_name() -> None:
     assert (root / "twhy" / "__init__.py").is_file()
     assert (root / "twhy" / "py.typed").is_file()
     assert [p.name for p in root.iterdir() if (p / "__init__.py").is_file()] == ["twhy"]
+
+
+def test_zt_branch_requires_updated_omeify_for_both_plain_and_s3_installs():
+    project = tomllib.loads(PROJECT.read_text(encoding="utf-8"))["project"]
+    runtime = next(Requirement(r) for r in project["dependencies"]
+                   if Requirement(r).name == "omeify")
+    s3 = next(Requirement(r) for r in project["optional-dependencies"]["s3"]
+              if Requirement(r).name == "omeify")
+    for requirement in (runtime, s3):
+        assert "0.22.1" not in requirement.specifier
+        assert "0.22.2" in requirement.specifier
+    assert "s3" in s3.extras

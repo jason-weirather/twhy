@@ -1006,3 +1006,97 @@ rather than incorrectly directing users to install an optional extra.
 The earlier validation sections record historical package configurations and
 commands from when PDF was optional; current installation guidance is in the
 README and `pyproject.toml`.
+
+## Z/T navigation over persistent Omeify datasets (October 31, 2026)
+
+Targets the exact supplied twhy `35a38c81d193c5b26fd2e3beeac835ba488d2704`
+(`t_z_support`) and Omeify `74bf991b4f2bc71ab629b449fe8c143057bb97f8`
+(`z_t_support`). The 76 included twhy text files and all 188 Omeify files were
+reconstructed with exact byte counts and final-newline checks. Ten binary demo
+media files omitted by the twhy snapshot were not recreated or modified.
+
+### Implementation
+
+Z/T/Series selection extends the existing document navigator, single source-loader
+thread and single display worker. Omeify remains the only OME decoder. A retained
+public ImageDataset yields immutable plane Images, each with a fresh ViewSession.
+Z/T changes preserve camera, channel selection/focus, colors and contrast; series
+changes initialize their own state. `d`, clickable dimension chips, brackets,
+PageUp/PageDown and `p` use the same frontend in TIFF and Zarr. Omitted startup
+indices default to zero only in twhy's explicit frontend policy. Stable-image
+Python calls remain strict unless `first_plane=True` is supplied.
+
+Ordinary channel/level switches no longer flush the provider cache. Automatic
+zoom consumes only each selected Image's exact-section-compatible levels.
+No XYZ coarse-volume substitution, Z projection, time playback, speculative
+Omeify prefetch, new runtime dependency or change to anonymous GeoJSON is added.
+Omeify's source tree is unchanged. The dependency floor becomes 0.22.2, but use
+the specified Omeify branch revision until an actual release contains this API.
+
+### Executed checks and explicit gaps
+
+**This environment did not produce an all-green full suite.** It lacks the real
+`zarr`, `ome-schema`, `imagecodecs` and `coolname` distributions. Package install
+and download attempts failed. No substitute reader, codec or globally injected
+naming package was installed to disguise those missing dependencies.
+
+* Complete suite attempt: **630 passed, 59 failed, one skipped**, 19 warnings.
+  Twenty newly added Zarr cases stopped at the missing `zarr` import; the new
+  public-writer demo test stopped at missing `ome-schema`. The other 38 failures
+  are existing naming-dependent selection/terminal cases. All 38 were rerun on
+  the untouched twhy snapshot and failed there too. The skip is the existing
+  real-coolname vocabulary test.
+* With those 59 specifically identified cases deselected: **630 passed, one
+  skipped, 59 deselected**, 16 Python 3.13 `forkpty` warnings. This is a selected
+  regression result, not a claim that all dependencies or formats were tested.
+* The new Z/T modules contain **61 cases**: **40 executable TIFF/UI/pyramid cases
+  passed**; the 21 real-Zarr/public-writer cases above remain unverified. A separate
+  new dependency-floor packaging assertion also passed. Real Zarr tests are not
+  converted to skips and must run with the actual declared dependencies.
+* Seven independent pre/post CLI comparisons matched stdout and stderr
+  byte-for-byte: scalar TIFF, multichannel TIFF, RGB ANSI TIFF, PNG, PDF, sparse
+  overview and explicit-region snapshots. Both trees used the same real Omeify
+  source. This is not a claim of equivalence for every file or terminal.
+
+Tests use actual TIFF files written independently with tifffile, including all six
+T/C/Z orders, RGB, Z-only, T-only, combined Z/T and multiple series. They assert
+exact requested pixels, shared cache reuse, invalid-index rejection, source-handle
+ownership, stale-load/frame rejection, failed-load recovery, loader/display
+shutdown ordering, camera/window/color preservation, sidebar focus, fullscreen,
+clickable dimensions, frozen selections, snapshots and real POSIX PTY restoration.
+One new selection-freeze test supplies a fixed per-test annotation identity to
+isolate unrelated naming; it does not validate coolname. File-free mixed-XYZ
+providers exercise the real Omeify plane adapter and twhy renderer without
+pretending to be Zarr codec tests.
+
+The existing remote-collection routing unit test now spies on the public dataset
+entry point and public inspector instead of the fixed-plane reader. It uses an
+array-backed real Omeify dataset and explicitly does not establish Zarr I/O.
+Two existing snapshot tests previously counted diagnostics as image rows under
+Click 8.1's CliRunner stderr mixing. Both failures reproduced unchanged on the
+baseline; they now check actual snapshot files separately from diagnostic text.
+No application output behavior was changed for that test correction.
+
+### Visual, packaging and environment checks
+
+The actual prompt_toolkit character/style screen was captured at 100 and 60
+columns after navigating a synthetic Z/T TIFF. Reconstructions of those screens
+were visually inspected: Z/T chips, active-axis marker, current indices and the
+unchanged image/sidebar geometry were legible. These are actual UI-cell captures,
+not generated mockups or screenshots of a native macOS terminal. A local font used
+only to inspect the captures is not included in the patch, package or bundle.
+
+All **72 Python source/test/example modules** parse under Python 3.11 grammar.
+Execution used Linux/Python 3.13.5, NumPy 2.3.5, SciPy 1.17.0, tifffile 2026.5.15,
+prompt_toolkit 3.0.52, pypdfium2 5.8.0, pytest 9.0.2 and Click 8.1.8. Wheel and
+source-distribution builds succeeded through setuptools 82.0.1's real build
+backend, including the new module, demo and declared Omeify minimum. A separately
+resolved fresh dependency installation and a Python 3.11 runtime were not tested.
+The Ruff executable and `build` command frontend were unavailable.
+
+Public IDR catalog references were rechecked, but actual public-store chunk I/O,
+S3 service access, production-slide latency, live SSH/tmux, native macOS/Windows
+terminals and large-volume memory behavior were not tested. The included demo
+uses real public writers and remains behind the missing-dependency verification
+gap. Run `python -m pytest -q tests/test_zt*.py` and the complete suite in the
+fully installed development environment before calling this integration green.

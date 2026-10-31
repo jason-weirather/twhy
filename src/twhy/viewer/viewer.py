@@ -122,8 +122,9 @@ class Viewer:
         if self.editing == "geojson-name":
             return " Name: "
         if self.editing == "destination" and self.navigation is not None:
-            doc = self.navigation.document
-            return f" Go to {doc.label} ({doc.first_index}..{doc.last_index}; Enter / Esc): "
+            nav = self.navigation
+            first, last = nav.destination_limits
+            return f" Go to {nav.destination_label} ({first}..{last}; Enter / Esc): "
         if self.editing == "color":
             return " Color (hex/name/default; Enter / Esc): "
         units = "unitless" if self.editing == "gamma" else "raw units"
@@ -284,7 +285,7 @@ class Viewer:
         while (monotonic() < deadline and request.generation == self.generation
                and not self.selecting and session is self.session and self._pending is None
                and (self.navigation is None or
-                    self.navigation.target == self.navigation.active.index)):
+                    not self.navigation.loading)):
             progress = await asyncio.get_running_loop().run_in_executor(
                 self._executor, session.step_overview, request.channels)
             if not progress.pending:
@@ -302,7 +303,7 @@ class Viewer:
     async def _step_overview(self) -> None:
         if self.samples is None or self.busy:
             return
-        if self.navigation is not None and self.navigation.target != self.navigation.active.index:
+        if self.navigation is not None and self.navigation.loading:
             return
         # Optional capability also keeps lightweight embedded session adapters usable.
         step = getattr(self.session, "step_overview", None)
@@ -667,7 +668,7 @@ class Viewer:
         if self.selecting:
             return
         if self.navigation is None:
-            self.message = "Page/series navigation is available for PDF and OME-TIFF files."
+            self.message = "Page/series/Z/T navigation is available for PDF and OME files."
             self.application.invalidate()
             return
         self.editing = "destination"
@@ -698,13 +699,13 @@ class Viewer:
             return True
         if self.editing == "destination":
             try:
-                destination = self.navigation.document.validate_index(int(buffer.text.strip()))
+                destination = self.navigation.validate_destination(int(buffer.text.strip()))
             except (ValueError, TypeError) as error:
-                self.message = f"Invalid {self.navigation.document.label}: {error}"
+                self.message = f"Invalid {self.navigation.destination_label}: {error}"
                 self.application.invalidate()
                 return True
             self.cancel_edit()
-            self.navigation.go(destination)
+            self.navigation.go_destination(destination)
             return True
         try:
             value = float(buffer.text)
@@ -792,7 +793,7 @@ class Viewer:
         if self.show_help:
             return (" | m: artwork | M: ASCII | t: toggle color | q: quit\n"
                     " Arrows: pan | +/-: zoom | r: fit | Tab: channels "
-                    "| l/u/g: limits | h: color | ?: less")
+                    "| d: axis | [/]: step | p: jump | ?: less")
         return " | h:hue m:art M:ASCII t:color ?:help q:quit\n " + safe_label(self.message)
 
     def __repr__(self) -> str:

@@ -221,10 +221,33 @@ def navigation_fragments(viewer: "Viewer") -> list:
                 and event.event_type == MouseEventType.MOUSE_UP):
             viewer.begin_destination()
 
-    return [("class:status", " [<] ", previous),
-            ("class:status", "[>] ", following),
-            ("class:status", "[p: go] ", jump),
-            ("class:status", safe_label(nav.status()))]
+    fragments = [("class:status", " [<] ", previous),
+                 ("class:status", "[>] ", following),
+                 ("class:status", "[p: go] ", jump)]
+    if any(axis in ("Z", "T") for axis in nav.axes):
+        def choose(axis):
+            def clicked(event):
+                if (viewer.editing is None and not viewer.selecting
+                        and event.button == MouseButton.LEFT
+                        and event.event_type == MouseEventType.MOUSE_UP):
+                    nav.select_axis(axis)
+            return clicked
+        for axis in nav.axes:
+            label = "Series" if axis == "series" else axis
+            if axis in ("Z", "T"):
+                info = next(info for info in nav.active.axis_info if info.name == axis)
+                current = nav.active.z_index if axis == "Z" else nav.active.t_index
+                label += f"{'*' if nav.axis == axis else ''} {current}/{info.size - 1}"
+            else:
+                label = (f"S{'*' if nav.axis == axis else ''} "
+                         f"{nav.active.index}/{nav.document.last_index}")
+            fragments.append(("class:panel.selected" if nav.axis == axis else "class:status",
+                              f"[{label}] ", choose(axis)))
+        fragments.append(("class:status", "d:axis"))
+    compact = any(axis in ("Z", "T") for axis in nav.axes)
+    fragments.append(("class:status", safe_label(nav.status(compact=compact))))
+    return fragments
+
 
 
 def clip_fragments(viewer: "Viewer") -> list:

@@ -110,6 +110,11 @@ def create_bindings(viewer: "Viewer") -> KeyBindings:
     def channel_solo(event):
         viewer.select_one(viewer.focused_channel)
 
+    @bindings.add("d", filter=browsing)
+    def dimension(event: KeyPressEvent) -> None:
+        if viewer.navigation is not None:
+            viewer.navigation.cycle_axis()
+
     @bindings.add("p", filter=browsing)
     def destination(event: KeyPressEvent) -> None:
         viewer.begin_destination()

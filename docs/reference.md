@@ -19,8 +19,10 @@ checks, not pixel measurements from the rendered text.
 ## Install
 
 Python **3.11+**. The **PyPI distribution**, terminal command, and Python import
-are all named **`twhy`**. This release requires `omeify>=0.22.1` for OME-Zarr
-reading and geometry.
+are all named **`twhy`**. This branch requires `omeify>=0.22.2` and the dataset API from the updated
+`z_t_support` checkout at `74bf991`. Install that source revision in the same
+environment; the numerical version alone does not certify a branch revision.
+[Z/T installation and validation](z_t_support.md).
 
 ```bash
 python -m pip install twhy          # all local formats, including PDF
@@ -142,8 +144,11 @@ store roots must not contain query strings and should expose consistent objects;
 remote stores are read-only. HTTP(S) servers require ordinary GET access to
 metadata/chunk paths (and byte-range support for sharded input).
 
-Local/remote Zarr keeps TIFF-style **zero-based series navigation**. `--group`
-chooses an image subtree; Z and T indices are optional only for singleton axes.
+Local/remote Zarr keeps TIFF-style **zero-based series, Z and T navigation**.
+`--group` chooses an image subtree. CLI and interactive opening choose index zero
+for each unspecified axis that exists. Explicit invalid indices, including an
+index for an absent axis, fail. The fixed-image Python `open_image()` helper keeps
+strict explicit-selection behavior unless `first_plane=True` is requested.
 Categorical label visualization remains unsupported. For pyramid levels with
 nonzero pixel-edge offsets, twhy currently **skips the shifted level** and
 uses an aligned one rather than silently misplacing tissue and GeoJSON positions.
@@ -155,8 +160,8 @@ capable terminals and simple text otherwise. There is no second viewer.
 
 | Input | Behavior in this pass |
 |---|---|
-| OME-TIFF | Existing Omeify OMETiffReader, stored levels, regional decoding; remote files download under the explicit cap. |
-| OME-Zarr | Omeify 0.4/0.5/0.6 reader: local/HTTP(S)/S3 store-root, regional chunks, channels and declared series; shifted levels are skipped. |
+| OME-TIFF | Persistent Omeify dataset, immutable Z/T plane Images and series navigation; remote files download under the explicit cap. |
+| OME-Zarr | Omeify 0.4/0.5/0.6 datasets: local/HTTP(S)/S3, regional chunks, channels, series and Z/T; shifted XY levels are skipped. |
 | Aperio SVS (`.svs`, case-insensitive) | Omeify AperioSVSReader, native RGB and supplied pyramid, regional decoding; optional bounded runtime overview cache. |
 | PNG, JPEG/JPG, WebP, BMP, TGA | Decode once; retain the base raster and an in-memory pyramid. |
 | GIF, APNG, animated WebP | Frame 0 by default, or select `--frame N`; no animation playback. |
@@ -193,10 +198,14 @@ samples, including for higher-bit-depth RGB PNGs; this is not a lossless export
 or a color-managed workstation. Scalar 16-bit PNG values are retained as uint16,
 with the existing intensity-channel contrast controls rather than clipping to 255.
 
-### Page and series navigation
+### Page, series, Z and T navigation
 
-**PageDown / `]`** goes forward; **PageUp / `[`** goes back. Press **`p`**, type a
-page number, and press **Enter** to jump directly. Escape or Ctrl-C cancels entry;
+**`d`** cycles the available navigation dimensions: Z, T, Series. Click a
+navigation-bar dimension to select it directly; a star marks the active dimension.
+Z is initially active when it has multiple planes, otherwise T, otherwise Series.
+A PDF keeps its Page dimension. **PageDown / `]`** goes forward;
+**PageUp / `[`** goes back. Press **`p`**, type an index for the active dimension,
+and press **Enter** to jump directly. Escape or Ctrl-C cancels entry;
 invalid numbers stay in the editor. The navigation bar also has clickable
 previous, next and go-to controls, and shows the current page and document count.
 The mouse wheel over the image remains zoom, not page turning.
@@ -206,6 +215,18 @@ PDF page numbers are **one-based**; TIFF/SVS series indices remain
 **zero-based**, matching `--page` and `--series`.
 The limits are shown in the jump prompt. Raster frames remain startup-only via
 `--frame`, with no animation playback or frame-navigation UI in this pass.
+
+A Z/T step preserves the exact base-pixel camera, selected channels, focused
+channel, pseudocolors, contrast windows, gamma and rendering mode. It uses another
+immutable plane Image from the same source session, not a reopened file/store.
+Rapid requests coalesce, old frames keep their old labels while loading, and
+obsolete completions cannot overwrite the latest request. New plane handoffs
+wait for any in-flight read and do not trigger another timed startup scan.
+
+Only the selected Image's exact-section pyramid participates in automatic zoom.
+Native XYZ levels that change Z sampling are not substituted for that optical
+section. Such inputs remain readable at their base and compatible XY levels;
+coarse-volume viewing is not implemented in this pass.
 
 A new page/series fits the display. PDF contrast, gamma and rendering mode remain
 selected as you turn pages. A new OME series resets channel selection to 0 and
@@ -293,10 +314,10 @@ then removes its most recent vertex.
 | `q` or Ctrl-Q | Quit. Ctrl-C during a path/numeric prompt cancels only that prompt. |
 
 The displayed frame is **frozen while selecting**. Zoom, pan, channel changes,
-and page/series navigation are inactive until you finish selection. PDF workers
+and page/series/Z/T navigation are inactive until you finish selection. PDF workers
 may finish and cache better detail, but source replacement waits until selection
 ends. This keeps the copied rectangle attached to precisely what you selected.
-All areas share this one frozen view. They do not span pages, series or camera changes.
+All areas share this one frozen view. They do not span pages, series, Z/T planes or camera changes.
 A terminal/canvas resize clears the whole set rather than exporting shifted cells. Save prompts reuse a footer row, so opening a prompt does not
 resize the image or shift the selection. In full-terminal mode, entry overlays the
 bottom row instead. No additional PDF raster is created
@@ -418,7 +439,7 @@ A new area receives a new ID. Accepting an unchanged name keeps the existing fla
 **`j` / `J`** copies / saves one `FeatureCollection` with a feature for every
 nonempty area, in creation order. Each feature contains only `type`, `id`,
 `geometry`, and properties `name`, `name_generated`, `selection_type`.
-**No source path, filename, source URL, page, series, image dimensions, machine
+**No source path, filename, source URL, page, series, Z/T indices, image dimensions, machine
 identity or inherited metadata is exported.** The source path remains internal
 for PDF text extraction and input-overwrite protection. Save destinations can
 be preconfigured with `--output-geojson-clip regions.geojson`.
@@ -429,7 +450,9 @@ geographic longitude/latitude. Import against the **same image and orientation**
 PDF geometry uses the **frozen displayed raster's pixel grid**, not PDF points or
 a cross-DPI coordinate system; export a matching raster or explicitly transform
 the coordinates before importing elsewhere. The viewer does not assemble areas
-from different PDF pages or different OME series into one collection.
+from different PDF pages, OME series or Z/T planes into one collection. Record
+the displayed Z/T indices separately and select the same plane in the application
+consuming the anonymous GeoJSON.
 
 Polygons must enclose an area without crossings or repeated vertices. Geometry
 is intersected with the source image rather than treating letterboxing as image
@@ -566,8 +589,9 @@ still be split by tmux; twhy does not implement a shell or manage tmux sessions.
 | Mouse wheel over the image; `+` / `-` | Zoom, anchored to the pointer for the wheel |
 | Arrow keys; left-button drag | Pan the image |
 | `r` or Home | Fit the whole image; cached overview when ready, sampled preview while preparing |
-| PageDown / `]`; PageUp / `[` | Next / previous PDF page or OME series |
-| `p`, number, Enter | Go to a PDF page (1-based) or OME series (0-based) |
+| `d`; click Z / T / Series | Choose the dimension navigated by brackets/PageUp/PageDown |
+| PageDown / `]`; PageUp / `[` | Next / previous item on the active dimension |
+| `p`, number, Enter | Jump to active Z/T/series index (0-based); PDF pages stay 1-based |
 | `s`; selection toolbar | Select/copy a rectangle; see the selection controls above. |
 | `c`; Tab | Toggle the sidebar; move focus between image and channels |
 | `,` / `.`; sidebar wheel | Focus the previous / next channel; scroll through the full list |
@@ -942,9 +966,11 @@ Raw preview means use float64 so narrow windows on uint32 data survive resamplin
 
 There are three deliberately different caches:
 
-* The provider-owned cache, evicted through Omeify's public `clear_cache()` when
-  switching channel/level pairs. twhy does not create a second raw tile cache or
-  assume one separate decoder cache exists for each Channel.
+* The provider-owned source cache, retained across channel, XY-level and Z/T
+  changes. Omeify owns its aggregate budget and eviction; twhy does not flush it
+  on ordinary navigation or create a second raw tile cache. One persistent dataset
+  is retained for the displayed series. Old/new series may overlap during a safe
+  handoff. Omeify speculative prefetch is not enabled by this frontend.
 * twhy's byte-bounded LRU of **raw resampled previews**, 32 MiB by default. Contrast,
   gamma, coloring, and density can reuse these samples without reading TIFF data.
   Richer previews take more bytes, so the same cache holds fewer of them. Detail
@@ -1077,8 +1103,9 @@ field use `--region`).
 
 These sample-count and array-cache budgets are **not a process-RSS cap**.
 Decoder buffers, masks, area-averaging intermediates, metadata, and terminal output
-also use memory. Omeify's per-plane decoded cache targets 64 MiB, but one oversized
-source strip or tile can exceed that target. A poorly tiled source can still be slow.
+also use memory. Omeify's source-session retained-payload budget defaults to 64 MiB;
+oversized native blocks can bypass retention and still require large decode
+allocations. A poorly tiled source can still be slow.
 
 ## Current scope
 
@@ -1087,8 +1114,10 @@ SVS** (RGB `.svs` files through Omeify's Aperio reader) and tiled or
 striped **OME-TIFF**, including stored SubIFD pyramids, grayscale, RGB, and planar
 multi-marker images. Python sessions accept an open Omeify intensity or RGB Image,
 including array and procedural backends. PDF pages and TIFF series can be navigated
-in-app; `--page` and `--series` choose the initial selection. Raster `--frame`
-selection remains startup-only. Non-singleton TIFF Z/T stacks and unsupported Zarr plane selections, label-specific
+in-app; `--page` and `--series` choose the initial selection. OME-TIFF and
+OME-Zarr support Z-only, T-only and combined Z/T navigation; `--z-index` and
+`--t-index` choose the initial plane. Raster `--frame` selection remains startup-only.
+Coarse-volume XYZ previews, time playback, projections, multi-file TIFF, label-specific
 categorical coloring, raw vendor formats, persistent annotation editing, segmentation overlays, saved view settings and ICC-managed color are not implemented. Explicit categorical LabelImages are rejected rather than assigning continuous
 brightness to arbitrary object IDs. OME-TIFF alone does not declare label semantics;
 CLI users must not interpret numeric label brightness as expression. The reader fails clearly

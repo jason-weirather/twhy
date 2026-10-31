@@ -85,20 +85,24 @@ def test_interactive_requires_terminal(mif):
     assert result.exit_code != 0 and "--snapshot" in result.output
 
 
-def test_explicit_region_and_whole_image_snapshot_with_tiny_budget(mif):
+def test_explicit_region_and_whole_image_snapshot_with_tiny_budget(mif, tmp_path):
     result = CliRunner().invoke(main, [
         str(mif[0]), "--snapshot", "--region", "10", "10", "20", "20",
         "--columns", "10", "--rows", "10",
     ])
     assert result.exit_code == 0
-    result = CliRunner().invoke(main, [str(mif[0]), "--snapshot", "--max-read-pixels", "100"])
+    output = tmp_path / "overview.txt"
+    result = CliRunner().invoke(main, [str(mif[0]), "--snapshot", "--max-read-pixels", "100",
+                                      "-o", str(output)])
     assert result.exit_code == 0, result.output
     assert "full-coverage overview" in result.output
-    # The final newline terminates row 40; it is not an additional display row.
-    lines = result.stdout.splitlines()
+    # Inspect pixels separately from stderr, which Click 8.1 mixes into stdout
+    # in CliRunner by default. A terminating newline is not an extra image row.
+    text = output.read_text()
+    lines = text.splitlines()
     assert len(lines) == 40
     assert all(len(line) == 120 for line in lines)
-    assert result.stdout.endswith("\n")
+    assert text.endswith("\n")
     # A caller-selected field is never overridden by the automatic full-slide fit.
     selected = CliRunner().invoke(main, [str(mif[0]), "--snapshot", "--max-read-pixels", "100",
                                          "--region", "1", "1", "5", "5"])

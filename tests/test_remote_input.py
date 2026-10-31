@@ -189,36 +189,44 @@ def test_shifted_levels_never_selected_for_viewing():
 
 
 def test_zarr_collection_navigation_for_url_root(monkeypatch):
+    # Transport/dispatch unit test, not a Zarr codec substitute. Real Zarr/HTTP
+    # round trips are tested independently in test_zt_zarr.py.
     import omeify
-    seen = []
+    seen, inspected, datasets = [], [], []
 
-    class FakeImage:
-        series_names = ("Stroma", "Tonsil", "Melanoma")
-        def __init__(self, location, *, series, group, z, t, storage_options):
-            seen.append((location, series, group, z, t))
-            self.dtype = np.dtype("uint16")
-            self.levels = ()
-        def __enter__(self):
-            return self
-        def __exit__(self, *args):
-            return False
+    def open_dataset(location, **kwargs):
+        seen.append((location, kwargs))
+        dataset = omeify.ImageDataset.from_array(
+            np.zeros((4, 1, 3, 8, 8), np.uint16), axes="TCZYX")
+        datasets.append(dataset)
+        return dataset
 
-    monkeypatch.setattr(omeify, "OMEZarrReader", FakeImage)
-    document = ImageDocument("https://example.org/collection.ome.zarr", series=1,
-                             group="A/1", z_index=2, t_index=3)
+    class Inspector:
+        def __init__(self, location, **kwargs):
+            inspected.append((location, kwargs))
+            self.report = {"series": [{"name": name} for name in
+                                      ("Stroma", "Tonsil", "Melanoma")]}
+
+    monkeypatch.setattr(omeify, "open_dataset", open_dataset)
+    monkeypatch.setattr(omeify, "ZarrInspector", Inspector)
+    url = "https://example.org/collection.ome.zarr"
+    document = ImageDocument(url, series=1, group="A/1", z_index=2, t_index=3)
     assert document.kind == "zarr" and document.label == "series"
     initial = document.initialize()
     try:
-        assert document.count == 3 and initial.index == 1
+        assert document.count == 3 and initial.position == (1, 2, 3)
         second = document.load(2)
+        assert second.position == (2, 0, 0)  # new series starts on its first plane
         second.release()
         assert "collection.ome.zarr" in document.item_name(initial)
-        assert seen == [
-            ("https://example.org/collection.ome.zarr", 1, "A/1", 2, 3),
-            ("https://example.org/collection.ome.zarr", 2, "A/1", 2, 3),
-        ]
+        assert seen == [(url, {"input_type": "ome_zarr", "series": index,
+                               "group": "A/1", "storage_options": None}) for index in (1, 2)]
+        assert len(inspected) == 1
+        assert datasets[0].is_open and not datasets[1].is_open
     finally:
         initial.release()
+        document.close()
+    assert not any(dataset.is_open for dataset in datasets)
 
 
 def test_http_tiff_regions_and_series(mif):

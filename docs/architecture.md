@@ -23,8 +23,9 @@ Snapshots call `image_input.open_image()` and pass its open Omeify Image to
 `ViewSession`. The interactive file entry point is `viewer.view_file()`. It uses
 `ImageDocument` for PDF/OME selection and `DocumentNavigation` for controls,
 source ownership, progressive PDF work and the page cache. Both paths still use
-the same `ViewSession` and renderer. OME-TIFF uses `OMETiffReader`; Aperio
-`.svs` TIFFs use `AperioSVSReader`. Both expose the same public Omeify Image,
+the same `ViewSession` and renderer. OME-TIFF and OME-Zarr browsing use
+Omeify's persistent `open_dataset()` sessions and borrowed immutable plane Images;
+Aperio `.svs` TIFFs retain `AperioSVSReader`. All expose the public Omeify Image,
 regional reads and supplied levels. Ordinary files and completed PDF
 rasters are wrapped through Omeify's public array API.
 
@@ -188,8 +189,11 @@ releases it. OME-TIFF's existing read/cache/lifetime policy is unchanged.
 one-based. PageUp/PageDown and brackets share the same document navigator; `p`
 reuses numeric entry without stealing the channel number shortcuts or gamma's
 `g` key. A clickable navigation bar shows the selection, count and PDF progress.
-Raster frames remain startup-only. New pages/series fit; resolution upgrades do
-not reset the camera or contrast. New OME series initialize their own channels.
+For OME sources, `d` and clickable Z/T/Series chips select the dimension for
+brackets, PageUp/PageDown and `p`. Source Z/T axes come from `axis_info`, not the
+normalized block shape, which can contain absent singleton axes. New pages/series
+fit and initialize their own channels; Z/T steps preserve camera and display
+settings. Raster frames remain startup-only.
 
 The event loop owns the document cache and reference counts. `DocumentItem`
 retains an open image independently for the active viewer, pending handoff, and
@@ -330,9 +334,11 @@ it. A new image lifetime requires a new ViewSession, whose preview cache belongs
 to the original observation. Closing the display does not close the caller's image.
 A session rejects access after its source is closed and reopened, including cache hits.
 
-The provider's cache is cleared on channel/level switches. No independent channel
-cache is assumed in Omeify 0.21.0; providers own their cache implementation. twhy's own preview LRU can retain multiple selections and viewports.
-Changing intensity windows does not change preview-cache keys.
+The provider's cache is retained on channel/level and Z/T switches. Omeify owns
+shared native-block caching and its aggregate budget. twhy's own preview LRU
+can retain multiple channels/viewports within one immutable plane session.
+A new plane receives a new ViewSession; its display cache cannot reuse another
+plane's pixels. Changing intensity windows does not change preview-cache keys.
 
 There is no on-disk cache or implicitly written user configuration. Errors do not
 fall back to another decoder. Snapshot output is independent of terminal state;
@@ -341,9 +347,9 @@ publication for `--no-overwrite`.
 
 ## Deliberate future work, not hidden partial implementations
 
-A truly shared Omeify decoded-cache budget could improve multi-channel panning
-without one-cache-per-channel memory growth. Further profiling should precede
-prefetch or another raw tile cache. Render-time optimizations should be compared
+The upgraded Omeify source cache supplies shared decoded-block reuse. Further
+profiling should precede enabling its optional predictive reads; no second raw
+tile cache is added here. Render-time optimizations should be compared
 with the exact rectangle-area oracle in tests.
 
 More glyph modes, overlays, and other terminal frontends should share `TextImage`
@@ -505,3 +511,42 @@ Unicode channel labels. Clicking a swatch edits rather than toggles; the rest of
 the row retains visibility toggling. The focused hue/color row is clickable too.
 At short heights channel-list paging still reserves at least one visible channel;
 the `h` key remains available even when its detail row or the sidebar is hidden.
+
+
+## Z/T document lifetimes
+
+`ome_navigation.py` is a frontend ownership adapter, not a decoder. A
+reference-counted `DatasetHandle` retains the real public Omeify dataset. The
+active ImageDocument and each live DocumentItem hold independent references.
+Items close their plane Image before releasing their owner. Discarding a stale
+series load cannot replace or evict the displayed series' source. New series
+are opened on the one source-loader thread; the accepted handle becomes current
+only during the between-reads handoff. Shutdown stops the loader, joins display
+work, and then releases the active image and owner.
+
+ImageDataset currently lacks public series collection descriptors. twhy performs
+one separate metadata-only public `TiffInspector`/`ZarrInspector` discovery at
+initialization to obtain the series count. This may repeat startup metadata I/O;
+it is never performed for Z/T stepping. No private Omeify fields, TIFF XML or NGFF
+parsers are used. A future public collection descriptor can eliminate that extra
+startup discovery without changing the navigation model.
+
+The request target includes series, Z and T plus a monotonically increasing
+navigation epoch. Source-loader and render completions are checked independently.
+The displayed item and the requested item remain distinct while loading. A plane
+handoff preserves the exact camera and windows, drops stale display samples, and
+requests one new frame without fitting or a timed startup-overview scan. Ordinary
+bounded idle overview work remains available for that selected plane. Selections
+freeze the displayed observation and all dimensional navigation.
+
+Automatic resolution selection consumes only the plane Image's compatible XY
+levels. A stored Z-reduced level is not treated as another resolution of that
+section. No projection, interpolation along Z, time playback or coarse-volume UI
+is added. Those are twhy presentation choices, not policies inserted into Omeify.
+Omeify prefetch is left disabled until real navigation measurements justify it.
+
+The ordinary stable-image Python `open_image()` remains strict about non-singleton
+axes. CLI snapshots explicitly opt into `first_plane=True`, matching interactive
+initial selection: zero for omitted present axes, None for absent axes. Explicit
+indices are validated rather than clamped. Anonymous GeoJSON remains unchanged;
+Z/T context must be recorded separately when consuming an exported region.

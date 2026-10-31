@@ -50,8 +50,10 @@ def _write_text(path: Path, text: str, *, overwrite: bool) -> None:
 @click.option("--series", type=click.IntRange(min=0), default=0,
               help="Zero-based OME-TIFF/SVS/OME-Zarr image series.")
 @click.option("--group", default="", help="OME-Zarr group under the store root (plate/well/etc.).")
-@click.option("--z-index", type=click.IntRange(min=0), help="OME-Zarr Z plane, zero-based.")
-@click.option("--t-index", type=click.IntRange(min=0), help="OME-Zarr T plane, zero-based.")
+@click.option("--z-index", type=click.IntRange(min=0),
+              help="Initial OME-TIFF/Zarr Z plane, zero-based; default first plane.")
+@click.option("--t-index", type=click.IntRange(min=0),
+              help="Initial OME-TIFF/Zarr time point, zero-based; default first point.")
 @click.option("--input-format", type=click.Choice(["auto", "zarr"]), default="auto",
               help="Use zarr for URL store roots without a .zarr suffix.")
 @click.option("--max-remote-mib", type=click.FloatRange(min=0, min_open=True),
@@ -262,11 +264,16 @@ def main(
                            pdf_dpi=dpi if kind == "pdf" else None, background=matte,
                            group=group, z_index=z_index, t_index=t_index,
                            s3_endpoint_url=s3_endpoint_url, s3_anonymous=s3_anonymous,
-                           input_format="zarr" if source.is_zarr else "auto") as image,
+                           input_format="zarr" if source.is_zarr else "auto",
+                           first_plane=True) as image,
                 ViewSession(image, name=name, cache_mib=cache_mib,
                             max_read_pixels=max_read_pixels, overview_cache_mib=overview_cache_mib,
                             overview_max_source_pixels=overview_max_source_pixels) as session,
             ):
+                selection = image.plane_selection
+                if selection is not None and (z_index is not None or t_index is not None):
+                    click.echo(f"OME plane: series {series}, Z={selection.z}, "
+                               f"T={selection.t} (zero-based; None means absent).", err=True)
                 if kind == "pdf" and viewport is not None:
                     # --region stays on the quick-preview coordinate grid even when
                     # a deterministic snapshot renders directly at the detail ceiling.

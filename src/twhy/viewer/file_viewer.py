@@ -82,6 +82,7 @@ async def _view_resolved_file(path, *, series=0, page=None, frame=None, pdf_max_
         )
     except BaseException:
         initial.release()
+        document.close()
         raise
     try:
         renderer = TextRenderer(mode=mode, color=color,

@@ -164,6 +164,7 @@ def open_image(
     z_index: int | None = None, t_index: int | None = None,
     max_remote_mib: float = DEFAULT_MAX_REMOTE_MIB, s3_endpoint_url: str | None = None,
     s3_anonymous: bool = False, input_format: str = "auto",
+    first_plane: bool = False,
 ) -> Iterator["Image"]:
     """Open a local image/OME-Zarr or bounded remote HTTP(S)/S3 file.
 
@@ -171,6 +172,9 @@ def open_image(
     required metadata and chunks. An ordinary remote file is staged once under
     max_remote_mib for the lifetime of this context. For interactive PDF work,
     use view_file(), which keeps that staged file alive through all workers.
+    OME Z/T selectors are explicit by default. first_plane=True is the frontend
+    policy used by CLI snapshots: unspecified present axes start at zero. It
+    yields a borrowed plane Image, not necessarily a format-specific reader.
     """
     with resolve_input(path, max_remote_mib=max_remote_mib,
                        s3_endpoint_url=s3_endpoint_url, s3_anonymous=s3_anonymous,
@@ -179,7 +183,7 @@ def open_image(
             resource.path, series=series, page=page, frame=frame, pdf_dpi=pdf_dpi,
             background=background, group=group, z_index=z_index, t_index=t_index,
             s3_endpoint_url=s3_endpoint_url, s3_anonymous=s3_anonymous,
-            input_format="zarr" if resource.is_zarr else "auto",
+            input_format="zarr" if resource.is_zarr else "auto", first_plane=first_plane,
         ) as image:
             yield image
 
@@ -191,7 +195,7 @@ def _open_resolved_image(
     background: Sequence[int] | None = None,
     group: str = "", z_index: int | None = None, t_index: int | None = None,
     s3_endpoint_url: str | None = None, s3_anonymous: bool = False,
-    input_format: str = "auto",
+    input_format: str = "auto", first_plane: bool = False,
 ) -> Iterator["Image"]:
     """Open one OME/SVS series, ordinary image/frame, or rendered PDF page.
 
@@ -226,8 +230,24 @@ def _open_resolved_image(
     ):
         raise ValueError("pdf_dpi must be positive and finite")
     matte = _background(background)
-    if kind != "zarr" and (group or z_index is not None or t_index is not None):
-        raise ValueError("--group, --z-index and --t-index only apply to OME-Zarr")
+    if not isinstance(first_plane, bool):
+        raise TypeError("first_plane must be boolean")
+    is_ome = kind == "zarr" or kind == "tiff" and path.suffix.casefold() != ".svs"
+    if group and kind != "zarr":
+        raise ValueError("--group only applies to OME-Zarr")
+    if not is_ome and (z_index is not None or t_index is not None):
+        raise ValueError("--z-index and --t-index only apply to OME-TIFF and OME-Zarr")
+    if first_plane and is_ome:
+        if page is not None or frame is not None or pdf_dpi is not None or background is not None:
+            raise ValueError("OME inputs use --series/--z-index/--t-index; "
+                             "PDF/raster options do not apply")
+        from .ome_navigation import initial_plane, open_ome_dataset
+        with open_ome_dataset(path, kind, series=series, group=group,
+                              s3_endpoint_url=s3_endpoint_url,
+                              s3_anonymous=s3_anonymous) as dataset:
+            with initial_plane(dataset, z_index=z_index, t_index=t_index) as image:
+                yield image
+        return
     if kind == "zarr":
         if page is not None or frame is not None or pdf_dpi is not None or background is not None:
             raise ValueError(
@@ -253,7 +273,8 @@ def _open_resolved_image(
             from omeify import AperioSVSReader as reader
         else:
             from omeify import OMETiffReader as reader
-        with reader(path, series=series) as image:
+        options = {} if path.suffix.casefold() == ".svs" else {"z": z_index, "t": t_index}
+        with reader(path, series=series, **options) as image:
             yield image
         return
     if series != 0:
