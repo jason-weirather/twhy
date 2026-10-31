@@ -125,6 +125,9 @@ class ClipController:
 
     def start(self, kind: str = "rectangle") -> None:
         viewer, nav = self.viewer, self.viewer.navigation
+        if viewer.histogram_mode:
+            self.notify("Return to image view with H before selecting an image region.")
+            return
         if (self._closed or viewer.editing is not None or viewer.frame is None or viewer.busy
                 or viewer.frame.shape != (viewer.canvas_size[1], viewer.canvas_size[0])
                 or viewer.displayed_generation != viewer.generation
@@ -159,6 +162,9 @@ class ClipController:
                     "Drag a box | Space: anchor | a: add area")
 
     def toggle(self, kind: str = "rectangle") -> None:
+        if self.viewer.histogram_mode:
+            self.notify("Return to image view with H before selecting an image region.")
+            return
         if self.selection is None:
             self.start(kind)
         elif self.selection.kind == kind:
@@ -167,6 +173,9 @@ class ClipController:
             self.add_area(kind)
 
     def start_polygon(self) -> None:
+        if self.viewer.histogram_mode:
+            self.notify("Return to image view with H before selecting an image region.")
+            return
         self.toggle("polygon")
 
     def add_area(self, kind: str | None = None) -> None:

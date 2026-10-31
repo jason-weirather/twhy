@@ -44,7 +44,8 @@ class CanvasControl(UIControl):
         selection = self.viewer.clipping.selection
         if selection is not None:
             return UIContent(get_line=selection.row, line_count=max(1, height), show_cursor=False)
-        lines = self.viewer.cell_lines
+        lines = (self.viewer.contrast.content(width, height) if self.viewer.histogram_mode
+                 else self.viewer.cell_lines)
         return UIContent(
             get_line=lambda row: lines[row] if row < len(lines) else [],
             line_count=max(1, height), show_cursor=False,
@@ -74,6 +75,10 @@ class CanvasControl(UIControl):
             except ValueError as error:
                 viewer.clipping.notify(str(error))
             viewer.application.invalidate()
+            return None
+        if viewer.histogram_mode:
+            self._drag = None
+            viewer.contrast.mouse(event)
             return None
         columns, rows = viewer.canvas_size
         anchor = (min(1.0, max(0.0, (event.position.x + 0.5) / max(1, columns))),
@@ -192,6 +197,10 @@ class ChannelControl(UIControl):
                 left, right = self.swatch_columns
                 if not viewer.session.info.is_rgb and left <= event.position.x < right:
                     viewer.begin_edit("color")
+                elif viewer.histogram_mode:
+                    viewer.contrast.drag = None
+                    viewer.contrast.request(index)
+                    viewer.application.invalidate()
                 else:
                     viewer.toggle_channel()
         return None
@@ -236,7 +245,8 @@ def navigation_fragments(viewer: "Viewer") -> list:
             label = "Series" if axis == "series" else axis
             if axis in ("Z", "T"):
                 info = next(info for info in nav.active.axis_info if info.name == axis)
-                current = nav.active.z_index if axis == "Z" else nav.active.t_index
+                position = nav.display_position
+                current = position[1] if axis == "Z" else position[2]
                 label += f"{'*' if nav.axis == axis else ''} {current}/{info.size - 1}"
             else:
                 label = (f"S{'*' if nav.axis == axis else ''} "

@@ -19,8 +19,8 @@ checks, not pixel measurements from the rendered text.
 ## Install
 
 Python **3.11+**. The **PyPI distribution**, terminal command, and Python import
-are all named **`twhy`**. This branch requires `omeify>=0.22.2` and the dataset API from the updated
-`z_t_support` checkout at `74bf991`. Install that source revision in the same
+are all named **`twhy`**. This branch requires `omeify>=0.23.0` and the dataset API from the updated
+`z_t_support` checkout at `6e926f2`. Install that source revision in the same
 environment; the numerical version alone does not certify a branch revision.
 [Z/T installation and validation](z_t_support.md).
 
@@ -145,8 +145,8 @@ remote stores are read-only. HTTP(S) servers require ordinary GET access to
 metadata/chunk paths (and byte-range support for sharded input).
 
 Local/remote Zarr keeps TIFF-style **zero-based series, Z and T navigation**.
-`--group` chooses an image subtree. CLI and interactive opening choose index zero
-for each unspecified axis that exists. Explicit invalid indices, including an
+`--group` chooses an image subtree. CLI and interactive opening choose middle Z (`size // 2`) and T=0
+for unspecified axes that exist. Explicit invalid indices, including an
 index for an absent axis, fail. The fixed-image Python `open_image()` helper keeps
 strict explicit-selection behavior unless `first_plane=True` is requested.
 Categorical label visualization remains unsupported. For pyramid levels with
@@ -605,6 +605,9 @@ still be split by tmux; twhy does not implement a shell or manage tmux sessions.
 | `h`; click a color swatch | Edit the focused intensity channel's color (hex/name/default); swatch clicks focus without toggling the channel |
 | Enter; Escape or Ctrl-C while editing | Apply; cancel numeric/color entry |
 | `a` | Estimate and lock contrast from the focused channel's visible preview |
+| `H` | Toggle the focused channel's text histogram; drag `^L`/`^U` or use `l/u` |
+| `A` | Estimate/apply a fixed dataset-wide (or single-Image) range for the focused channel |
+| `L` in histogram view | Toggle log/linear counts; raw intensities remain linear |
 | `m` | Enter/cycle detail / shape / simple; include blocks only when color is on |
 | `b` | Temporarily preview colored blocks; restore the previous style/color, including strict ASCII |
 | `t`; `i` | Toggle the `m` family's remembered color (while `M` stays ASCII); reverse ink density |
@@ -693,7 +696,7 @@ than crashing the viewer or silently accepting a different value.
 
 Unsigned RGB starts with its dtype's full intensity range and a shared window for
 all three RGB samples, preserving their relative balance. Other image channels
-start with the 1st and 99.5th percentiles of the first finite preview, with explicit
+initially use the 1st and 99.5th percentiles of the first finite preview, with explicit
 constant/sparse-field handling. These are **preview-based estimates**, not a
 whole-slide stain-normalization procedure. Zeros participate. Initial windows
 remain fixed as the camera moves. Pressing `a` deliberately re-estimates the focused
@@ -742,6 +745,40 @@ chosen displayed colors, including when cycling selection preview styles.
 Colors are session-local, not written into the input or a settings file. Opening
 a different TIFF/Zarr series resets its colors and contrast to that series' defaults;
 there is no cross-series marker-name matching or persistent palette in this pass.
+
+### Stack-wide estimates and text histograms
+
+Interactive scalar Z/T stacks automatically perform one fixed-budget estimate
+per selected channel, on the existing display worker between foreground reads.
+The initial preview limits are provisional; a completed estimate is applied
+once, not per section. Any manual limit/gamma edit or visible-preview `a`
+protects that channel from queued and in-flight automatic applications. Explicit
+CLI `--lower`/`--upper` limits are never automatically replaced.
+`--no-stack-contrast` disables automatic estimation, but H/A remain available.
+Ordinary 2D opening and snapshot contrast retain the preview policy. Snapshots
+share the new middle-Z/T=0 default but do not launch a dataset contrast scan.
+
+H replaces only the plot area, not the selected source or image camera. The
+histogram follows channel focus. Clicking a channel label in this mode changes
+focus without toggling visibility; color swatches retain their hue editor.
+The histogram estimates the fraction of finite base pixels, including real zeros.
+The X axis is raw intensity; L toggles only the Y count scaling. Carets ^L/^U
+are the same display limits edited by l/u. Dragging them never rereads pixels.
+Intervals refer to the estimator's recommendation, not a manually dragged limit.
+A deliberately applies the cached recommendation or computes it if absent.
+
+Histogram results retain bounded sample arrays under a 32 MiB payload LRU.
+Eviction does not alter locked windows. Image selections/GeoJSON export are
+unavailable in histogram mode, so plot coordinates cannot be mistaken for image
+coordinates. H restores the camera and image view. Fullscreen and monochrome
+character modes remain available. Small terminals show an enlargement message.
+
+The [contrast methods guide](contrast-estimation.md) defines the reusable
+`ContrastConfig`, `ContrastEstimator`, `ContrastEstimate`, `estimate_contrast`
+and `render_histogram` interfaces, defaults, sampling equations, confidence
+limitations, RGB handling, and publication-oriented evaluation plan. The default
+upper-limit policy preserves observed excess intensity mass; this is a display
+heuristic, not an assertion of biological positivity or freedom from hot pixels.
 
 ### Set channel colors at startup or in a snapshot
 

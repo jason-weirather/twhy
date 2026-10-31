@@ -51,7 +51,7 @@ def _write_text(path: Path, text: str, *, overwrite: bool) -> None:
               help="Zero-based OME-TIFF/SVS/OME-Zarr image series.")
 @click.option("--group", default="", help="OME-Zarr group under the store root (plate/well/etc.).")
 @click.option("--z-index", type=click.IntRange(min=0),
-              help="Initial OME-TIFF/Zarr Z plane, zero-based; default first plane.")
+              help="Initial OME-TIFF/Zarr Z plane, zero-based; default middle section.")
 @click.option("--t-index", type=click.IntRange(min=0),
               help="Initial OME-TIFF/Zarr time point, zero-based; default first point.")
 @click.option("--input-format", type=click.Choice(["auto", "zarr"]), default="auto",
@@ -110,6 +110,9 @@ def _write_text(path: Path, text: str, *, overwrite: bool) -> None:
               default=DEFAULT_STARTUP_OVERVIEW_SECONDS,
               help="Attempt a quick whole-slide cache before first view/snapshot (default: 2s); "
                    "0 skips startup scanning. Native reads can exceed a deadline.")
+@click.option("--stack-contrast/--no-stack-contrast", default=True,
+              help="Interactive intensity stacks: one bounded stack-wide contrast estimate; "
+                   "manual limits win. Snapshots keep explicit/preview windows.")
 @click.option("--snapshot", is_flag=True, help="Render one text frame without starting the viewer.")
 @click.option("--columns", type=click.IntRange(min=1), default=120,
               help="Snapshot width in characters.")
@@ -143,7 +146,7 @@ def main(
     upper: float | None, mode: str, color: bool | None, invert: bool | None,
     cell_aspect: float, region: tuple[float, ...] | None, cache_mib: float,
     max_read_pixels: int, overview_cache_mib: float, overview_max_source_pixels: int,
-    startup_overview_seconds: float, snapshot: bool, columns: int, rows: int, ansi: bool,
+    startup_overview_seconds: float, stack_contrast: bool, snapshot: bool, columns: int, rows: int, ansi: bool,
     output_path: Path | None, no_overwrite: bool,
     output_text_clip: Path | None, output_ansi_clip: Path | None,
     output_png_clip: Path | None, output_geojson_clip: Path | None,
@@ -153,7 +156,8 @@ def main(
 
     Wheel/+/- zoom, arrows or mouse drag pan, c toggles the channel panel.
     PgUp/PgDn or [/] flip PDF pages/OME series; p jumps to a specific page/series.
-    l/u/g edit limits and gamma; h edits channel color.
+    l/u/g edit limits and gamma; h edits channel color. H shows a histogram;
+    A estimates a fixed stack/image range; L switches histogram count scale.
     m cycles artwork modes (color or mono); M cycles strict ASCII; t toggles color.
     s selects a rectangle; v starts a polygon; j copies GeoJSON; J saves it.
     Selection: y/Y text, i/I PNG, t/T ANSI, j/J GeoJSON (copy/save).
@@ -249,6 +253,7 @@ def main(
                     max_read_pixels=max_read_pixels, overview_cache_mib=overview_cache_mib,
                     overview_max_source_pixels=overview_max_source_pixels,
                     startup_overview_seconds=startup_overview_seconds,
+                    stack_contrast=stack_contrast,
                     output_text_clip=output_text_clip,
                     output_ansi_clip=output_ansi_clip, output_png_clip=output_png_clip,
                     output_geojson_clip=output_geojson_clip, clipboard=clipboard or "auto",

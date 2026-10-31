@@ -216,7 +216,7 @@ def test_zarr_collection_navigation_for_url_root(monkeypatch):
     try:
         assert document.count == 3 and initial.position == (1, 2, 3)
         second = document.load(2)
-        assert second.position == (2, 0, 0)  # new series starts on its first plane
+        assert second.position == (2, 1, 0)  # new series starts at middle Z, T=0
         second.release()
         assert "collection.ome.zarr" in document.item_name(initial)
         assert seen == [(url, {"input_type": "ome_zarr", "series": index,

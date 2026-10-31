@@ -30,6 +30,7 @@ from ..text_renderer import DEFAULT_RAMP, TEXT_MODES, TextRenderer
 from ..view_session import ViewSamples, ViewSession
 from ..viewport import Viewport
 from .bindings import create_bindings
+from .contrast import ContrastController
 from .clipping import ClipController
 from .mode_navigation import ModeNavigation
 from .controls import (
@@ -62,6 +63,7 @@ class Viewer:
         output_png_clip=None, output_geojson_clip=None,
         clipboard="auto", clip_source="auto", clip_overwrite=True,
         startup_overview_seconds: float = DEFAULT_STARTUP_OVERVIEW_SECONDS,
+        stack_contrast: bool = True, contrast_config=None,
     ) -> None:
         self.startup_overview_seconds = validate_startup_seconds(startup_overview_seconds)
         # Quick-cache work belongs to exactly one initial camera generation.
@@ -91,6 +93,9 @@ class Viewer:
         self.image_only = False
         self.show_help = False
         self.editing: str | None = None
+        self.histogram_mode = False
+        self.contrast = ContrastController(self, config=contrast_config, automatic=stack_contrast,
+                                           explicit_window=window is not None)
         self.message = "Opening image..."
         self.busy = False
         self.generation = 0
@@ -214,6 +219,7 @@ class Viewer:
                 self.clipping.close()
                 self._executor.shutdown(wait=True, cancel_futures=True)
                 self._executor = None
+                self.contrast.close()
                 self._pending = None
                 if self.navigation is not None:
                     self.navigation.close()
@@ -231,6 +237,13 @@ class Viewer:
             request, self._pending = self._pending, None
             if request is None:
                 try:
+                    if ((self.frame is not None or self.histogram_mode) and self.editing is None and
+                            (self.navigation is None or not self.navigation.loading)):
+                        more = await self.contrast.step()
+                        if more:
+                            self._wake.set()
+                            await asyncio.sleep(0)
+                            continue
                     await self._step_overview()
                 except asyncio.CancelledError:
                     raise
@@ -249,6 +262,10 @@ class Viewer:
             except asyncio.CancelledError:
                 raise
             except Exception as error:
+                if request.generation != self.generation:
+                    continue
+                if self.navigation is not None and self.navigation.restore_presented(error):
+                    continue
                 self.application.exit(exception=error)
                 return
             if request.generation != self.generation or self.selecting:
@@ -266,6 +283,7 @@ class Viewer:
             self.application.invalidate()
             if self.navigation is not None:
                 self.navigation.frame_displayed()
+            self.contrast.queue_automatic()
             # Give foreground requests priority. Idle iterations prepare only one
             # overview chunk each, off the UI thread and on this same executor.
             self._wake.set()
@@ -303,6 +321,8 @@ class Viewer:
     async def _step_overview(self) -> None:
         if self.samples is None or self.busy:
             return
+        if self.histogram_mode:
+            return
         if self.navigation is not None and self.navigation.loading:
             return
         # Optional capability also keeps lightweight embedded session adapters usable.
@@ -330,6 +350,14 @@ class Viewer:
         if (self.selecting or self.viewport is None
                 or not all(self.canvas_size) or self._wake is None):
             return
+        if self.histogram_mode:
+            self.generation += 1
+            self._pending = None
+            self.busy = False
+            self.contrast.queue_automatic()
+            self._wake.set()
+            self.application.invalidate()
+            return
         self.generation += 1
         columns, rows = self.canvas_size
         self._pending = FrameRequest(
@@ -350,6 +378,9 @@ class Viewer:
                               resume=False)
         previous = self.canvas_size
         self.canvas_size = (columns, rows)
+        if self.histogram_mode and self.viewport is not None:
+            self.application.invalidate()
+            return
         if self.viewport is None:
             self.fit()
         elif all(previous):
@@ -425,7 +456,7 @@ class Viewer:
         Initial opening already fits the whole image; Home/r restores that view
         after zooming or panning, using a sampled preview if necessary.
         """
-        if self.selecting or not all(self.canvas_size):
+        if self.histogram_mode or self.selecting or not all(self.canvas_size):
             return
         view = Viewport.fit(self.session.info.shape, columns=self.canvas_size[0],
                             rows=self.canvas_size[1], cell_aspect=self.renderer.cell_aspect,
@@ -434,7 +465,7 @@ class Viewer:
         self._set_viewport(view)
 
     def zoom(self, factor: float, *, anchor: Sequence[float] = (0.5, 0.5)) -> None:
-        if self.selecting:
+        if self.histogram_mode or self.selecting:
             return
         if self.viewport is not None:
             candidate = self.viewport.zoom(factor, anchor=anchor)
@@ -448,7 +479,7 @@ class Viewer:
             self._set_viewport(candidate)
 
     def pan_cells(self, dx: float, dy: float) -> None:
-        if self.selecting:
+        if self.histogram_mode or self.selecting:
             return
         if self.viewport is not None:
             self.message = ""
@@ -459,6 +490,9 @@ class Viewer:
         if self.selecting:
             return
         self.focused_channel = min(len(self.windows) - 1, max(0, self.focused_channel + delta))
+        self.contrast.drag = None
+        if self.histogram_mode:
+            self.contrast.request(self.focused_channel)
         self.application.invalidate()
 
     def select_one(self, index: int) -> None:
@@ -597,6 +631,31 @@ class Viewer:
             self.change_renderer(mode="blocks", color=True)
             self._blocks_restore = saved
 
+    def toggle_histogram(self):
+        if self.selecting or self.editing is not None:
+            return
+        if self.frame is None and not self.histogram_mode:
+            self.message = "Wait for the first image frame before opening its histogram."
+            self.application.invalidate()
+            return
+        self.histogram_mode = not self.histogram_mode
+        self.generation += 1
+        self._pending = None
+        self.busy = False
+        self.canvas._drag = None
+        self.contrast.drag = None
+        if self.histogram_mode:
+            self.contrast.request(self.focused_channel)
+            self.message = "Histogram: H image, A stack auto, L log counts, l/u edit; drag carets."
+        else:
+            self.message = "Image view restored; contrast stays fixed."
+            self.request_frame(reuse_samples=True)
+        self.application.invalidate()
+
+    def stack_auto_window(self):
+        if not self.selecting:
+            self.contrast.apply_auto()
+
     def auto_window(self) -> None:
         if self.selecting:
             return
@@ -613,6 +672,7 @@ class Viewer:
             try:
                 estimated = estimate_window(values)
                 gamma = 1.0 if self.windows[index] is None else self.windows[index].gamma
+                self.contrast.protect(index)
                 self.windows[index] = replace(estimated, gamma=gamma)
             except ValueError as error:
                 self.message = str(error)
@@ -658,6 +718,8 @@ class Viewer:
                 self.application.invalidate()
                 return
             text = f"{getattr(window, field):g}"
+        if field in ("lower", "upper", "gamma"):
+            self.contrast.protect(self.focused_channel)
         self.editing = field
         self.entry.text = text
         self.entry.buffer.cursor_position = len(self.entry.text)
@@ -757,7 +819,9 @@ class Viewer:
 
     def _title(self) -> str:
         info = self.session.info
-        return (f" twhy | {safe_label(info.name)} "
+        name = (self.navigation.presented_name if self.navigation is not None
+                and self.frame is not None and not self.histogram_mode else info.name)
+        return (f" twhy | {safe_label(name)} "
                 f"| {'RGB' if info.is_rgb else str(len(info.channels)) + ' channels'}")
 
     def _status(self) -> str:
@@ -765,6 +829,9 @@ class Viewer:
             return " " + safe_label(self.clipping.status())
         if self.viewport is None:
             return " Opening image..."
+        if self.histogram_mode:
+            return (" Histogram | " + safe_label(self.contrast.status or
+                    "full series/image distribution; limits remain fixed across Z/T"))
         view = self.viewport
         level = "?" if self.samples is None else str(self.samples.plan.level.index)
         if self.samples is not None and self.samples.plan.level.approximate:
@@ -793,8 +860,8 @@ class Viewer:
         if self.show_help:
             return (" | m: artwork | M: ASCII | t: toggle color | q: quit\n"
                     " Arrows: pan | +/-: zoom | r: fit | Tab: channels "
-                    "| d: axis | [/]: step | p: jump | ?: less")
-        return " | h:hue m:art M:ASCII t:color ?:help q:quit\n " + safe_label(self.message)
+                    "| d: axis | [/]: step | p: jump | H:hist A:stack auto L:log")
+        return " | H:hist A:auto h:hue m:art M:ASCII ?:help q:quit\n " + safe_label(self.message)
 
     def __repr__(self) -> str:
         return (f"Viewer(channels={self.selected_channels}, mode={self.renderer.mode!r}, "

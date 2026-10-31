@@ -25,7 +25,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # Optional AWS/S3-compatible transport. Local and HTTP(S) Zarr need no extra.
-s3 = ["omeify[s3]>=0.22.2"]
+s3 = ["omeify[s3]>=0.23.0"]
 dev = [
     "pytest>=8,<10",
     "pytest-asyncio>=0.24",

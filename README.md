@@ -70,9 +70,9 @@ python -m pip install -e '.[dev]'
 ```
 
 The `t_z_support` branch requires the updated **Omeify `z_t_support` checkout
-at `74bf991` or a descendant with the same dataset API**, installed in the same
-Python environment. Its metadata version is 0.22.2; that version alone does not
-identify the branch revision. Install your local Omeify checkout before installing
+at `6e926f2` (Omeify 0.23.0) or a descendant with the same dataset API**,
+installed in the same Python environment. A version number alone does not
+identify an unpublished branch revision. Install your local Omeify checkout before installing
 this twhy branch. [Z/T setup and examples](docs/z_t_support.md).
 
 PDF support is **included** in the standard install. No special extra or system PDF converter is needed.
@@ -85,7 +85,7 @@ twhy paper.pdf                         # page navigation and progressive detail
 twhy slide.svs                         # Aperio whole-slide RGB
 twhy slide.ome.tif                     # OME-TIFF, grayscale or multichannel
 twhy /data/sample.ome.zarr             # local OME-Zarr
-twhy time-depth.ome.tif                # first Z/T plane; d chooses navigation axis
+twhy time-depth.ome.tif                # middle Z, T=0; d chooses navigation axis
 twhy experiment.zarr --z-index 15 --t-index 12  # explicit zero-based startup plane
 
 # Compose two fluorescence channels with chosen colors:
@@ -96,8 +96,8 @@ twhy slide.ome.tif --channel 0 --channel 2 \
 The initial view fits the image. Wheel zoom is anchored to the pointer; pan with the mouse or arrow keys. The terminal sidebar keeps channels, colors, and contrast controls at hand.
 
 Z/T changes preserve the camera, channels, colors and contrast. A new series still
-fits and initializes its own channels. Omitted startup Z/T indices use zero for
-axes present in the source; invalid explicit indices fail. Only exact-section
+fits and initializes its own channels. Omitted startup indices use middle Z
+(`size // 2`) and T=0 for present axes; invalid explicit indices fail. Only exact-section
 pyramid levels are used automatically, including when the input stores an XYZ
 pyramid. [Navigation, limitations, and public test inputs](docs/z_t_support.md).
 
@@ -121,11 +121,34 @@ pyramid. [Navigation, limitations, and public test inputs](docs/z_t_support.md).
 | Choose navigation dimension | `d`, or click Z / T / Series in the navigation bar |
 | Step/jump within that dimension | `]` / `[` or PageDown / PageUp; `p` to jump (PDF pages remain one-based) |
 | Toggle a channel; focus another | Click channel/Space; `,` and `.` |
+| Histogram / dataset contrast | `H` toggles histogram; `A` estimates/applies a fixed range; `L` toggles log counts; drag `^L`/`^U` |
 | Adjust channel color or contrast | `h` (hue); `l`/`u` (limits); `g` (gamma); `a` (auto window) |
 | Switch artwork / strict ASCII | `m` / `M`; `t` toggles artwork color; `f` toggles fullscreen |
 | Select region | `s` rectangle; `v` polygon |
 | Export a selection | `y/Y` text, `i/I` PNG, `t/T` ANSI, `j/J` GeoJSON (copy/save) |
 | Help or quit | `?` / `q` |
+
+## Fast contrast estimation and channel histograms
+
+**H** replaces the image canvas with the focused channel's text histogram.
+Drag **^L / ^U**, or type exact values with **l/u**. **L** switches the count
+axis between log and linear. **A** applies a dataset-wide recommendation;
+**a** still estimates from the current visible preview. Channel focus changes
+which histogram is shown without changing image geometry.
+
+Scalar Z/T stacks get one bounded, incremental estimate per selected channel,
+then retain fixed limits across navigation. Manual limits win over late results.
+Use `--no-stack-contrast` to disable automatic estimation. Histogram sampling and
+recommendations remain available on demand for ordinary 2D images too.
+
+The reusable `estimate_contrast(image_or_dataset, channel=...)` library uses a
+coarse pilot to guide probability-weighted **base-resolution** tile samples.
+It returns a detached histogram, suggested limits, coverage and uncertainty
+warnings without importing the terminal UI. The highlight-preserving policy is
+separate from the population histogram; it is not a biological signal detector.
+Rare unseen features remain possible, and a hot pixel can influence the range.
+
+[Method, library API, budgets, limitations and research references](docs/contrast-estimation.md).
 
 ## From terminal annotations to full-resolution ROIs
 

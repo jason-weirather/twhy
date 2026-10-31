@@ -26,7 +26,7 @@ def test_real_zarr_planes_defaults_and_permuted_storage(tmp_path, version, axes)
     initial = doc.initialize()
     later = None
     try:
-        assert initial.z_index == (0 if "z" in axes else None)
+        assert initial.z_index == (2 if "z" in axes else None)
         assert initial.t_index == (0 if "t" in axes else None)
         z, t = (4 if "z" in axes else None), (2 if "t" in axes else None)
         later = doc.load_plane(0, z_index=z, t_index=t)

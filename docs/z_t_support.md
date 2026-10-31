@@ -1,13 +1,14 @@
 # Depth and time navigation
 
-This branch targets twhy `35a38c8` and Omeify `74bf991`. Omeify owns storage,
+The initial Z/T implementation targeted twhy `35a38c8` and Omeify `74bf991`.
+The contrast/histogram refinement targets twhy `f8f0ece` and Omeify `6e926f2` (0.23.0). Omeify owns storage,
 axes, geometry and caches; twhy owns navigation and terminal presentation.
 
 ## Installation for this development branch
 
 Install both local checkouts into the same Python environment. The Omeify checkout
 must contain the tested `z_t_support` implementation, not just an older package
-that happens to report version 0.22.2. No Java or additional runtime is added.
+that predates the 0.23.0 dataset API. No Java or additional runtime is added.
 
 ```bash
 python -m pip install -e /path/to/omeify
@@ -16,9 +17,9 @@ python -m pip check
 python -c 'import omeify; print(omeify.__file__); print(omeify.open_dataset)'
 ```
 
-The paths above are explicit placeholders. This twhy branch raises its declared
-Omeify minimum to 0.22.2, including the optional S3 extra. Update the dependency
-floor to the actual release containing these interfaces before publishing twhy.
+The paths above are explicit placeholders. The declared Omeify minimum is 0.23.0
+for both the plain installation and optional S3 extra. The source checkout used
+for validation is identified above; validate a published wheel separately.
 
 ## Controls
 
@@ -37,7 +38,7 @@ existing navigation and refinement. Singleton/absent axes have no scrubbing
 control. Z is active initially when it has multiple sections; otherwise T,
 otherwise Series. Index limits never wrap.
 
-Opening an OME image without indices starts each present Z/T axis at zero:
+Opening an OME image without indices starts at middle Z (`size // 2`) and T=0:
 
 ```bash
 twhy stack.ome.tif
@@ -54,7 +55,7 @@ or opt into its documented `first_plane=True` frontend default.
 Z/T changes preserve the camera, selected/focused channels, pseudocolors, contrast
 windows, gamma and rendering style. Contrast is not recomputed on every plane;
 press `a` to request that deliberately. A series change retains its previous
-meaning: fit a new image, reset its channels, and start its Z/T axes at zero.
+meaning: fit a new image, reset its channels, and start at its middle Z and T=0.
 Startup indices are not reapplied to every series.
 
 Selection freezes one camera and one plane. It does not span Z/T coordinates.
@@ -150,3 +151,19 @@ CLI snapshots and POSIX terminal restoration. Real Zarr tests cover 0.4/0.5/0.6,
 permuted axes, mixed XY/XYZ pyramids, shared chunks, sharding and loopback HTTP.
 Those Zarr tests intentionally fail rather than silently skip when a required
 backend is missing. See `docs/validation.md` for what was actually executed.
+
+## Stable contrast and uninterrupted presentation
+
+Scalar stack opening starts with a provisional preview window, then the
+bounded estimator applies one dataset-wide window per selected channel.
+Navigation does not re-estimate contrast. Manual controls or explicit startup
+limits take precedence; `--no-stack-contrast` disables this automatic work.
+H/A make histograms and explicit recommendations available on demand. See
+[the method and histogram controls](contrast-estimation.md).
+
+The last completed character grid and its matching Z/T label remain visible
+while another section is rendered. Successful pixels and their label are
+published together. Obsolete results cannot replace newer requests. A failed
+new-plane read restores the previous usable source instead of blanking it.
+This concerns application presentation, not a guarantee about terminal repaint
+tearing. The source's raw values and pyramid semantics do not change.

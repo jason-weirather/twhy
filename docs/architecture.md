@@ -547,6 +547,45 @@ Omeify prefetch is left disabled until real navigation measurements justify it.
 
 The ordinary stable-image Python `open_image()` remains strict about non-singleton
 axes. CLI snapshots explicitly opt into `first_plane=True`, matching interactive
-initial selection: zero for omitted present axes, None for absent axes. Explicit
+initial selection: middle Z and T=0 for omitted present axes, None for absent axes. Explicit
 indices are validated rather than clamped. Anonymous GeoJSON remains unchanged;
 Z/T context must be recorded separately when consuming an exported region.
+
+## Reusable statistical contrast and histogram presentation
+
+`contrast_sampling.py` plans and executes a bounded, seeded experiment against
+Omeify's public Image/ImageDataset regional API. It freezes coarse guidance,
+then draws base-resolution tile clusters from a defensive mixture proposal.
+`contrast_statistics.py` constructs the inverse-probability-weighted CDF,
+separate highlight-aware recommendation, and conditional tile-bootstrap
+intervals. `contrast.py` exposes the public library without terminal imports.
+No coarse values enter the final base-pixel histogram; no new file reader,
+codec, dataset model, storage cache, or Omeify policy is introduced.
+
+`histogram.py` renders detached estimates as ordinary TextImage values plus
+handle coordinates. `viewer/contrast.py` owns one cooperative job, request
+revisions, manual-override protection, result retention, and mouse hit testing.
+It runs on the existing display executor. A single step reads one region or
+finalizes the result; foreground frames take priority between steps. Selection
+pauses work; numeric entry defers automatic application. Queued automatic jobs
+lose permission to apply when a user edits that channel. Source changes cancel
+jobs safely between reads; source owners remain retained until cleanup.
+
+Completed windows remain stable across Z/T. A 32 MiB array-payload result LRU
+can discard histograms without restarting automatic estimation or changing
+windows. Paint callbacks consume only detached results. Per-channel sampling
+budgets bound returned samples/requests, not encoded chunks, native codec
+scratch, temporary NumPy allocations, or process RSS. No hard wall-time promise
+is made for a native call. See contrast-estimation.md for exact statistics and
+limitations rather than interpreting a bootstrap interval as a rare-signal
+visibility guarantee.
+
+Z/T navigation keeps a presented-position/name separate from the active read
+source. A between-reads source handoff discards raw preview samples but retains
+the completed text grid and matching label. One retained rollback session/item
+keeps the previously displayed observation usable until new pixels publish.
+Failed plane reads restore it; successful presentation releases it. Obsolete
+render generations cannot publish. Histogram navigation can update the requested
+plane without replacing the retained image frame; leaving histogram mode renders
+that plane before changing the displayed image label. New-series transitions
+cancel numeric limit entry belonging to the former series.

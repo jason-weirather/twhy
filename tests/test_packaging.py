@@ -67,6 +67,6 @@ def test_zt_branch_requires_updated_omeify_for_both_plain_and_s3_installs():
     s3 = next(Requirement(r) for r in project["optional-dependencies"]["s3"]
               if Requirement(r).name == "omeify")
     for requirement in (runtime, s3):
-        assert "0.22.1" not in requirement.specifier
-        assert "0.22.2" in requirement.specifier
+        assert "0.22.2" not in requirement.specifier
+        assert "0.23.0" in requirement.specifier
     assert "s3" in s3.extras

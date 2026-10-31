@@ -40,6 +40,9 @@ class DocumentNavigation:
         self.overview_max_source_pixels = overview_max_source_pixels
         self.default_window, self.auto_invert = window, auto_invert
         self.active = initial
+        self.presented_position = initial.position
+        self.presented_name = self.document.item_name(initial)
+        self._rollback = None
         self.session = self._session(initial)
         self.target = initial.index
         self.target_z, self.target_t = initial.z_index, initial.t_index
@@ -68,6 +71,12 @@ class DocumentNavigation:
                            cache_mib=self.cache_mib, max_read_pixels=self.max_read_pixels,
                            overview_cache_mib=self.overview_cache_mib,
                            overview_max_source_pixels=self.overview_max_source_pixels)
+
+    @property
+    def display_position(self):
+        return (self.presented_position if self.viewer is not None
+                and self.viewer.frame is not None and not self.viewer.histogram_mode
+                else self.active.position)
 
     @property
     def cache_bytes(self) -> int:
@@ -383,14 +392,15 @@ class DocumentNavigation:
             self._blocked_upgrade = None
             self.error = ""
         self.document.activate(item)
-        if not same_series and viewer.editing == "destination":
+        if not same_series and viewer.editing in ("destination", "lower", "upper", "gamma"):
+            # Numeric limits belong to the source/channel that opened the editor.
             viewer.cancel_edit()
         self.session, self.active = session, item
         viewer.session = session
         viewer.samples = None
         if plane_change:
-            # Do not show the previous slice under the newly installed slice label.
-            viewer.frame, viewer.cell_lines = None, []
+            # Keep the last completed glyph grid until the replacement is ready.
+            # Samples were discarded above; the displayed label stays with that grid.
             viewer.canvas._drag = None
         if self.axis not in self.axes:
             self.axis = self.axes[0]
@@ -410,9 +420,17 @@ class DocumentNavigation:
                     # A new RGB/intensity series gets its normal default. A user
                     # density edit disables this policy in Viewer.change_renderer.
                     viewer.renderer.invert = session.info.is_rgb
-        old_session.close()
-        old_item.release()
-        viewer.message = ("Plane changed; view, channels and contrast preserved."
+        if plane_change and viewer.frame is not None and self._rollback is None:
+            self._rollback = old_session, old_item, old_view
+        else:
+            old_session.close()
+            old_item.release()
+        if not plane_change:
+            self._release_rollback()
+            if viewer.frame is None:
+                self.presented_position = item.position
+                self.presented_name = self.document.item_name(item)
+        viewer.message = ("Rendering requested plane; previous completed view retained."
                           if plane_change else
                           f"Detail ready: {item.dpi:g} DPI. Zoom and contrast preserved."
                           if same_page and item.dpi else
@@ -424,8 +442,40 @@ class DocumentNavigation:
         else:
             viewer._set_viewport(viewer.viewport, limit=True)
 
+    def _release_rollback(self):
+        if self._rollback is not None:
+            session, item, _ = self._rollback
+            self._rollback = None
+            session.close()
+            item.release()
+
+    def restore_presented(self, error) -> bool:
+        """A failed new-plane pixel read leaves the previous observation usable."""
+        if self._rollback is None:
+            return False
+        failed_session, failed_item = self.session, self.active
+        self.session, self.active, view = self._rollback
+        self._rollback = None
+        self.viewer.session, self.viewer.viewport = self.session, view
+        self.viewer.samples = None
+        self.document.activate(self.active)
+        failed_session.close()
+        failed_item.release()
+        self.target, self.target_z, self.target_t = self.active.position
+        self._target_auto = False
+        self._epoch += 1
+        self._report_error(f"Cannot render requested plane: {error}; previous view retained.")
+        self.viewer.request_frame()
+        return True
+
     def frame_displayed(self) -> None:
-        """Do not compete with the initial preview before it has reached the UI."""
+        """Publish labels with completed pixels; then consider PDF refinements."""
+        changed = self.presented_position != self.active.position
+        self.presented_position = self.active.position
+        self.presented_name = self.document.item_name(self.active)
+        self._release_rollback()
+        if changed and self.document.is_ome:
+            self.viewer.message = "Plane changed; view, channels and contrast preserved."
         if self._closed or self.document.kind != "pdf" or self.active.index != self.target:
             return
         cached = self.cache.get(self.target)
@@ -515,6 +565,10 @@ class DocumentNavigation:
             text += f" | opening {doc.label} {self.target}"
             if self.target == self.active.index:
                 text += f" Z={self.target_z} T={self.target_t}"
+        if self._rollback is not None and not self.viewer.histogram_mode:
+            _, shown_z, shown_t = self.presented_position
+            text += (f" | showing Z={shown_z} T={shown_t}; rendering "
+                     f"Z={self.active.z_index} T={self.active.t_index}")
         if doc.kind == "pdf":
             text += f" | {self.active.dpi:g}/{doc.dpi_steps[-1]:g} DPI"
             current = sorted(dpi for page, dpi, epoch in self.building
@@ -557,6 +611,7 @@ class DocumentNavigation:
         """Release the active session only after Viewer has joined its read worker."""
         if not self._released:
             self._released = True
+            self._release_rollback()
             self.session.close()
             self.active.release()
             self.document.close()

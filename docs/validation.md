@@ -1100,3 +1100,15 @@ terminals and large-volume memory behavior were not tested. The included demo
 uses real public writers and remains behind the missing-dependency verification
 gap. Run `python -m pytest -q tests/test_zt*.py` and the complete suite in the
 fully installed development environment before calling this integration green.
+
+
+## Pyramid-guided contrast and histogram refinement (October 31, 2026)
+
+This refinement targets `f8f0ece` with Omeify `6e926f2` (0.23.0).
+The [complete validation record](contrast-validation.md) distinguishes executed
+statistics/UI/TIFF tests from dependency-blocked real Zarr integration.
+The full attempted suite yielded 688 passes, 65 dependency-blocked failures and
+one skip; the available-dependency lane yielded 688 passes, one skip and
+65 explicit deselections. These are not two independent passing full suites.
+See [methods and statistical scope](contrast-estimation.md) for the population,
+weights, separate display policy, bootstrap qualifications, and evaluation plan.

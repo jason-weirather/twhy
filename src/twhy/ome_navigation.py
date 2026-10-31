@@ -39,12 +39,13 @@ def open_ome_dataset(path, kind, **options) -> ImageDataset:
 
 
 def initial_plane(dataset: ImageDataset, *, z_index=None, t_index=None) -> Image:
-    """twhy starts unspecified *present* axes at zero; absent axes stay absent.
+    """twhy starts at middle Z and T=0; absent axes stay absent.
 
     Explicit values, including indices on absent axes, are validated by Omeify.
     This frontend default does not relax Omeify's explicit-selection contract.
     """
-    z = 0 if z_index is None and dataset.axis_info("Z") is not None else z_index
+    depth = dataset.axis_info("Z")
+    z = depth.size // 2 if z_index is None and depth is not None else z_index
     t = 0 if t_index is None and dataset.axis_info("T") is not None else t_index
     return dataset.plane(z=z, t=t)
 

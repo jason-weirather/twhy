@@ -49,6 +49,8 @@ def create_bindings(viewer: "Viewer") -> KeyBindings:
             viewer.cancel_edit()
         elif viewer.selecting:
             viewer.clipping.end()
+        elif viewer.histogram_mode:
+            viewer.toggle_histogram()
         elif viewer.image_only:
             viewer.toggle_fullscreen(enable=False)
         else:
@@ -164,6 +166,20 @@ def create_bindings(viewer: "Viewer") -> KeyBindings:
 
     for key, field in (("l", "lower"), ("u", "upper"), ("g", "gamma"), ("h", "color")):
         bindings.add(key, filter=browsing)(edit(field))
+
+    @bindings.add("H", filter=browsing)
+    def histogram(event):
+        viewer.toggle_histogram()
+
+    @bindings.add("A", filter=browsing)
+    def stack_auto(event):
+        viewer.stack_auto_window()
+
+    @bindings.add("L", filter=browsing)
+    def histogram_scale(event):
+        if viewer.histogram_mode:
+            viewer.contrast.log_counts = not viewer.contrast.log_counts
+            event.app.invalidate()
 
     @bindings.add("a", filter=browsing)
     def auto(event: KeyPressEvent) -> None:

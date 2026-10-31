@@ -145,7 +145,7 @@ class ImageDocument:
             self.validate_index(index)
         if self.is_ome:
             # Startup selectors apply only at startup; a different series starts
-            # on its first available plane, never with invalid old-series indices.
+            # at middle Z and T=0, never with invalid old-series indices.
             return self.load_plane(index, z_index=self.z_index if not self.count else None,
                                    t_index=self.t_index if not self.count else None)
         dpi = self.dpi_steps[0] if self.kind == "pdf" else None

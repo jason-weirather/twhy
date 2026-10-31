@@ -61,6 +61,7 @@ def stack_file(tmp_path):
 
 @asynccontextmanager
 async def browsing_stack(path, **kwargs):
+    kwargs.setdefault("z_index", 0)  # Navigation sequences below deliberately start at Z=0.
     doc = ImageDocument(path, **{k: v for k, v in kwargs.items()
                                 if k in ("series", "z_index", "t_index", "input_format")})
     initial = doc.initialize()
@@ -96,10 +97,10 @@ def test_metadata_first_defaults_borrowing_and_source_cache(stack_file, monkeypa
     first = doc.initialize()
     dataset = first.dataset
     try:
-        assert first.position == (0, 0, 0) and doc.count == 1
+        assert first.position == (0, 2, 0) and doc.count == 1
         assert isinstance(first.image, Image)
         np.testing.assert_array_equal(first.image.read_region(3, 12, 4, 15),
-                                      data[0, :, 0, 3:12, 4:15])
+                                      data[0, :, 2, 3:12, 4:15])
         later = doc.load_plane(0, z_index=4, t_index=2)
         try:
             assert later.dataset is dataset and len(opens) == 1
@@ -166,10 +167,10 @@ def test_public_fixed_image_and_cli_snapshot_use_selected_tiff_plane(stack_file,
     assert len(out.read_text().splitlines()) == 8
 
 
-def test_cli_default_plane_matches_explicit_zero(stack_file, tmp_path):
+def test_cli_default_plane_matches_explicit_middle_z(stack_file, tmp_path):
     path, _ = stack_file
     outputs = []
-    for i, selectors in enumerate(([], ["--z-index", "0", "--t-index", "0"])):
+    for i, selectors in enumerate(([], ["--z-index", "2", "--t-index", "0"])):
         out = tmp_path / f"{i}.txt"
         result = CliRunner().invoke(main, [str(path), "--snapshot", "--rows", "8",
                                           "--columns", "20", "-o", str(out), *selectors])
@@ -262,7 +263,7 @@ async def test_series_resets_but_plane_steps_do_not(tmp_path):
         assert nav.active.position == (1, 0, 0) and nav.axes == ("series",)
         assert not owner.is_open
         await send(pipe, "[", viewer, task)
-        assert nav.active.position == (0, 0, 0)  # startup indices are not reused
+        assert nav.active.position == (0, 2, 0)  # middle Z; startup overrides are not reused
         assert viewer.selected_channels == (0,)
 
 
@@ -336,7 +337,7 @@ def test_rgb_stacks_keep_one_logical_channel(tmp_path, axes):
     item = doc.initialize()
     try:
         assert item.image.axes == "YXS" and item.image.channel_count == 1
-        selection = tuple(0 if a in "TZ" else slice(None) for a in axes)
+        selection = tuple(2 if a == "Z" else 0 if a == "T" else slice(None) for a in axes)
         np.testing.assert_array_equal(item.image.asarray(), data[selection])
     finally:
         item.release()
@@ -422,7 +423,7 @@ def test_discarded_series_load_does_not_evict_current_dataset(tmp_path):
         stale.release()
         stale = None
         assert not stale_dataset.is_open and original_dataset.is_open
-        second = doc.load_plane(0, z_index=0, t_index=0)
+        second = doc.load_plane(0, z_index=first.z_index, t_index=first.t_index)
         assert second.dataset is original_dataset
         second.image.read_region(0, 8, 0, 8)
         assert original_dataset.cache_info()["loads"] == loads
@@ -491,18 +492,28 @@ def test_zt_real_terminal_navigation_and_restoration(stack_file):
     pexpect = pytest.importorskip("pexpect")
     transcript = io.StringIO()
     terminal = pexpect.spawn(
-        sys.executable, ["-m", "twhy", str(stack_file[0]), "--overview-cache-mib", "0"],
+        sys.executable, ["-m", "twhy", str(stack_file[0]), "--overview-cache-mib", "0",
+                         "--no-stack-contrast"],
         encoding="utf-8", timeout=15, dimensions=(28, 110),
         env={**os.environ, "TERM": "xterm-256color", "COLORTERM": "truecolor"})
     terminal.logfile_read = transcript
     try:
-        terminal.expect(r"Z 0/4")
+        terminal.expect(r"Z 2/4")
         terminal.expect("d:axis")
         terminal.send("]")
-        terminal.expect("Plane changed")
+        # Drain output before forcing the full redraw. Sleeping without reading
+        # can fill the PTY buffer and delay rendering of the requested plane.
+        deadline = time.monotonic() + .5
+        while time.monotonic() < deadline:
+            try:
+                terminal.read_nonblocking(65536, timeout=.05)
+            except pexpect.TIMEOUT:
+                pass
+        terminal.setwinsize(29, 111)  # Match the stable coordinate, not a transient status.
+        terminal.expect(r"Z 3/4")
         terminal.send("dp\x01\x0b2\r")
         time.sleep(.25)
-        terminal.setwinsize(29, 111)  # force a full redraw rather than matching ANSI diffs
+        terminal.setwinsize(30, 112)  # force a full redraw rather than matching ANSI diffs
         terminal.expect(r"T 2/2")
         terminal.send("q")
         terminal.expect(pexpect.EOF)

@@ -173,7 +173,7 @@ def open_image(
     max_remote_mib for the lifetime of this context. For interactive PDF work,
     use view_file(), which keeps that staged file alive through all workers.
     OME Z/T selectors are explicit by default. first_plane=True is the frontend
-    policy used by CLI snapshots: unspecified present axes start at zero. It
+    policy used by CLI snapshots: middle Z and T=0 for unspecified present axes. It
     yields a borrowed plane Image, not necessarily a format-specific reader.
     """
     with resolve_input(path, max_remote_mib=max_remote_mib,

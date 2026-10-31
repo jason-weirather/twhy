@@ -19,7 +19,7 @@ from .viewer import Viewer
 
 async def _view_resolved_file(path, *, series=0, page=None, frame=None, pdf_max_dpi=None,
                     pdf_cache_pages=None, background=None, channels=(0,), window=None,
-                    channel_colors=None,
+                    channel_colors=None, stack_contrast=True, contrast_config=None,
                     mode="blocks", color=True, invert=None, cell_aspect=2.0,
                     viewport=None, cache_mib=32.0, max_read_pixels=4_194_304,
                     overview_cache_mib=DEFAULT_OVERVIEW_CACHE_MIB,
@@ -69,6 +69,7 @@ async def _view_resolved_file(path, *, series=0, page=None, frame=None, pdf_max_
             await Viewer(session, channels=channels, channel_colors=channel_colors,
                          window=window, renderer=renderer,
                          viewport=viewport, startup_overview_seconds=startup_overview_seconds,
+                         stack_contrast=stack_contrast, contrast_config=contrast_config,
                          **clipping).run(input=input, output=output)
         return
     initial = document.initialize()
@@ -91,7 +92,8 @@ async def _view_resolved_file(path, *, series=0, page=None, frame=None, pdf_max_
         viewer = Viewer(navigation.session, navigation=navigation, channels=channels,
                         window=window, channel_colors=channel_colors,
                         renderer=renderer, viewport=viewport,
-                        startup_overview_seconds=startup_overview_seconds, **clipping)
+                        startup_overview_seconds=startup_overview_seconds,
+                        stack_contrast=stack_contrast, contrast_config=contrast_config, **clipping)
         await viewer.run(input=input, output=output)
     finally:
         # Idempotent stop/close also covers invalid initial channel selection or
