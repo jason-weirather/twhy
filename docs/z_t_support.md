@@ -122,9 +122,11 @@ Playback is **presentation-paced**: twhy shows each next completed frame, holds
 the previous frame and its label through decoding/rendering, and starts the
 following dwell interval only after publication. If a decoder or remote source
 is slower than the requested rate, observed playback slows without skipping
-frames or queueing an unbounded backlog. Actual observed FPS is therefore
-not guaranteed. No timestamps are invented for OME time points or compared to
-wall-clock acquisition time. A failed read pauses playback and preserves the
+frames or queueing an unbounded backlog. Mouse click-and-drag panning can span
+frame changes without stopping playback or resetting the drag anchor; a new
+series or changed image geometry still ends the gesture. Actual observed FPS
+is therefore not guaranteed. No timestamps are invented for OME time points
+or compared to wall-clock acquisition time. A failed read pauses playback and preserves the
 last usable view. Selection, histogram mode, editing a playback rate, or explicit
 navigation also pauses playback.
 

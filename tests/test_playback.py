@@ -373,3 +373,71 @@ async def test_failed_gif_read_pauses_and_keeps_previous_frame(tmp_path, monkeyp
         assert nav.active.index == 0 and nav.presented_name == previous_title
         assert viewer.frame is previous_frame
         assert viewer.application.is_running
+
+
+async def test_gif_mouse_drag_survives_playback_frame_handoffs(tmp_path):
+    """Real SGR mouse press/moves remain one gesture across GIF frame publication."""
+    from prompt_toolkit.data_structures import Point
+
+    path = tmp_path / "drag-during-playback.gif"
+    write_gif(path, durations=(330, 330, 330))
+    async with browsing(path, fps=2, autoplay=True) as (_, nav, viewer, pipe, task):
+        original = viewer.viewport
+        # SGR mouse coordinates are terminal-cell based and one-indexed. The
+        # image canvas starts after the title and document-navigation rows.
+        pipe.send_bytes(b"\x1b[<64;35;12M")  # Pointer-anchored zoom.
+        await eventually(lambda: viewer.viewport.width < original.width, task)
+        pipe.send_bytes(b"\x1b[<0;35;12M")  # Press at canvas cell (34, 9).
+        await eventually(lambda: viewer.canvas._drag == Point(34, 9), task)
+        before = viewer.viewport
+        await eventually(lambda: nav.display_position[0] != 0, task, timeout=5)
+        assert viewer.playback.playing
+        assert viewer.canvas._drag == Point(34, 9)
+
+        # The terminal only sends one MOUSE_DOWN for the entire gesture.
+        pipe.send_bytes(b"\x1b[<32;29;13M")  # Move while held to (28, 10).
+        await eventually(lambda: viewer.canvas._drag == Point(28, 10), task)
+        assert viewer.viewport.x > before.x
+        assert viewer.viewport.y < before.y
+        after_one_move = viewer.viewport
+
+        current_frame = nav.display_position[0]
+        await eventually(lambda: nav.display_position[0] != current_frame, task, timeout=5)
+        assert viewer.canvas._drag == Point(28, 10)
+        pipe.send_bytes(b"\x1b[<32;25;13M")  # Still held: move again.
+        await eventually(lambda: viewer.canvas._drag == Point(24, 10), task)
+        assert viewer.viewport.x > after_one_move.x
+        assert viewer.playback.playing
+
+        pipe.send_bytes(b"\x1b[<0;25;13m")
+        await eventually(lambda: viewer.canvas._drag is None, task)
+        last_view = viewer.viewport
+        pipe.send_bytes(b"\x1b[<32;19;13M")  # No press: must not pan.
+        await asyncio.sleep(.04)
+        assert viewer.viewport == last_view
+
+
+async def test_ome_t_mouse_drag_survives_playback_frame_handoffs(tmp_path):
+    """T playback preserves the same in-progress pan across time points."""
+    from prompt_toolkit.data_structures import Point
+    from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType
+
+    path = tmp_path / "drag-time.ome.tif"
+    write_stack(path)
+    async with browsing(path, fps=2, autoplay=True) as (_, nav, viewer, _, task):
+        def mouse(kind, x, y):
+            viewer.canvas.mouse_handler(MouseEvent(
+                Point(x, y), kind, MouseButton.LEFT, frozenset()))
+
+        viewer.zoom(1.5)
+        mouse(MouseEventType.MOUSE_DOWN, 25, 9)
+        assert viewer.canvas._drag == Point(25, 9)
+        await eventually(lambda: nav.display_position[2] != 0, task, timeout=5)
+        assert viewer.canvas._drag == Point(25, 9)
+        before = viewer.viewport
+        mouse(MouseEventType.MOUSE_MOVE, 20, 11)
+        assert viewer.viewport.x > before.x and viewer.viewport.y < before.y
+        assert viewer.canvas._drag == Point(20, 11)
+        assert viewer.playback.playing
+        mouse(MouseEventType.MOUSE_UP, 20, 11)
+        assert viewer.canvas._drag is None

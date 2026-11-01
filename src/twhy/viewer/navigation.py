@@ -435,7 +435,12 @@ class DocumentNavigation:
         if plane_change:
             # Keep the last completed glyph grid until the replacement is ready.
             # Samples were discarded above; the displayed label stays with that grid.
-            viewer.canvas._drag = None
+            # A GIF/T frame is another observation of the SAME canvas geometry.
+            # Do not cancel an in-progress mouse pan on every playback frame:
+            # the terminal sends MOUSE_DOWN only once, then MOUSE_MOVE until release.
+            # Reset only if the source's pixel grid actually changed.
+            if old_shape != new_shape or old_view is None:
+                viewer.canvas._drag = None
         if self.axis not in self.axes:
             self.axis = self.axes[0]
         if upgraded_view is not None:
