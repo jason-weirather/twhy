@@ -159,7 +159,12 @@ pyramid. [Navigation, playback, limitations, and public test inputs](docs/z_t_su
 
 ## Fast contrast estimation and channel histograms
 
-**H** replaces the image canvas with the focused channel's text histogram.
+The focused channel's full distribution is prepared after **0.5 seconds** without
+channel-focus movement, even while the image remains visible. Rapid sidebar wheel,
+arrow, and click navigation cancels the pending request for intermediate channels.
+Background results never change the displayed limits. `--no-stack-contrast`
+disables automatic image-view preparation. **H** immediately opens the
+histogram (starting the estimate immediately if it is not already cached).
 Drag **^L / ^U**, or type exact values with **l/u**. **L** switches the count
 axis between log and linear. The histogram view also offers the experimental
 **A** dataset-wide recommendation (the key still works in the normal view, but

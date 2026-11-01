@@ -194,12 +194,12 @@ class ChannelControl(UIControl):
             index = self.first_channel + row
             if 0 <= row < self.visible_channels and index < len(viewer.windows):
                 viewer.focused_channel = index
+                viewer.contrast.focus_changed()
                 left, right = self.swatch_columns
                 if not viewer.session.info.is_rgb and left <= event.position.x < right:
                     viewer.begin_edit("color")
                 elif viewer.histogram_mode:
                     viewer.contrast.drag = None
-                    viewer.contrast.request(index)
                     viewer.application.invalidate()
                 else:
                     viewer.toggle_channel()

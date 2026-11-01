@@ -51,8 +51,19 @@ broad bright tails. Both values are explicit **display preferences**; they do
 not distinguish biology from artifacts. Callers can pass a `ContrastConfig` to
 choose a different policy.
 
-**H** estimates the full distribution of the focused channel on demand, using
-its complete configured budget and bootstrap. An initial quick histogram is
+Once channel focus is stable for 0.5 seconds, the interactive viewer begins
+preparing that channel's detailed distribution in the background even while the
+image canvas remains visible. Each new focus resets the timer; no transient channel
+is queued for sampling during rapid wheel/arrow navigation. An abandoned passive
+estimate stops at the next safe read boundary (not in the middle of a codec call).
+Cached results remain available until evicted by the existing payload cap, and
+background results **never adjust a displayed window**. `--no-stack-contrast`
+disables automatic startup contrast and image-view focus precomputation; focus
+changes in the open histogram still wait 0.5 seconds before sampling. Explicit
+**H** and **A** remain available.
+
+**H** immediately uses or requests the full distribution of the focused channel,
+with its complete configured budget and bootstrap. An initial quick histogram is
 shown immediately if it exists, then replaced by the more detailed estimate.
 Neither histogram computation nor channel focus changes the displayed limits.
 **A** is the explicit command to apply the detailed recommendation, and may

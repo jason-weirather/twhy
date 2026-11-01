@@ -790,6 +790,15 @@ skips the prepublication sampling; H/A retain their detailed, on-demand behavior
 Raster/PDF and library/snapshot contrast are unchanged. Snapshots continue to
 start at middle Z/T=0 without starting a stack contrast scan.
 
+After channel focus stays unchanged for 0.5 seconds, the detailed full
+distribution is prepared while the image remains visible. Rapid channel navigation
+restarts the delay, dropping obsolete passive requests. A started estimate stops
+cooperatively at its next safe read boundary if focus moves elsewhere. Completed
+results remain cached; they never silently replace display limits. The
+`--no-stack-contrast` switch also disables this image-view precomputation, but
+not deliberate histogram viewing or explicit H/A requests. H opens immediately even if the estimate has not been
+computed yet, and starts it without the delay.
+
 H replaces only the plot area, not the selected source or image camera. The
 histogram follows channel focus. Clicking a channel label in this mode changes
 focus without toggling visibility; color swatches retain their hue editor.

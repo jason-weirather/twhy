@@ -14,6 +14,9 @@ from .rendering import terminal_lines
 from .controls import safe_label
 
 
+FOCUS_HISTOGRAM_DELAY_SECONDS = 0.5
+
+
 class ContrastController:
     """One incremental job on the existing display worker; no parallel pixel reader."""
 
@@ -44,6 +47,9 @@ class ContrastController:
         self.owner = None
         self.job_revision = 0
         self.job_apply = False
+        self.job_abandon = False
+        self._idle_channel = None
+        self._idle_timer: asyncio.TimerHandle | None = None
         self.deferred = None
         self.plot = None
         self._plot_key = None
@@ -59,6 +65,8 @@ class ContrastController:
                else id(self.viewer.session))
         if key == self.key:
             return
+        self._cancel_idle()
+        self._idle_channel = None
         self.close_job()
         self.key, self.source = key, source
         self.results.clear()
@@ -80,11 +88,71 @@ class ContrastController:
             self.queue[channel] = False
         self.revisions[channel] = self.revisions.get(channel, 0) + 1
 
-    def request(self, channel, *, apply=False, force=False):
+    def _cancel_idle(self):
+        if self._idle_timer is not None:
+            self._idle_timer.cancel()
+            self._idle_timer = None
+
+    def focus_changed(self):
+        """Debounce channel focus, without starting reads for transient scroll stops."""
+        self.sync_source()
+        channel = self.viewer.focused_channel
+        if channel != self._idle_channel:
+            self._idle_channel = channel
+            self._cancel_idle()
+            # Retain explicit A/apply requests, but not obsolete focus-only work.
+            for queued, apply in list(self.queue.items()):
+                if queued != channel and not apply:
+                    del self.queue[queued]
+            if self.job is not None and not self.job_apply:
+                # The executor may be inside a native read. Cancel only after
+                # it returns to the event loop; a quick return to this channel
+                # should be allowed to reuse the same in-flight estimate.
+                self.job_abandon = self.job._source.channel != channel
+                if self.job_abandon and self.viewer._wake is not None:
+                    self.viewer._wake.set()
+        self._schedule_idle()
+
+    def _schedule_idle(self):
+        viewer = self.viewer
+        channel = viewer.focused_channel
+        if ((not self.automatic and not viewer.histogram_mode) or
+                (viewer.session.info.is_rgb and not viewer.histogram_mode) or
+                viewer._wake is None or (viewer.frame is None and not viewer.histogram_mode) or
+                viewer.selecting or viewer.editing is not None or
+                (viewer.navigation is not None and viewer.navigation.loading) or
+                self.source is None or channel in self.completed or
+                channel in self.results or channel in self.errors or
+                channel in self.queue or
+                (self.job is not None and self.job._source.channel == channel)):
+            return
+        if self._idle_timer is None:
+            self._idle_timer = asyncio.get_running_loop().call_later(
+                FOCUS_HISTOGRAM_DELAY_SECONDS, self._focus_idle, self.key, channel)
+
+    def _focus_idle(self, source_key, channel):
+        self._idle_timer = None
+        viewer = self.viewer
+        if (self.key != source_key or viewer.focused_channel != channel or
+                (not self.automatic and not viewer.histogram_mode) or
+                (viewer.session.info.is_rgb and not viewer.histogram_mode) or
+                viewer.selecting or viewer.editing is not None or
+                (viewer.navigation is not None and viewer.navigation.loading)):
+            return
+        # Only warm the detached distribution. Never rewindow a displayed image.
+        self.request(channel, background=True)
+
+    def request(self, channel, *, apply=False, force=False, background=False):
         self.sync_source()
         if self.source is None:
             self.errors[channel] = "This embedded session has no image provider for sampling."
             return
+        if background and channel in self.completed:
+            return
+        if not background and channel == self.viewer.focused_channel:
+            # H and A are direct user requests and must not wait for the debounce.
+            self._idle_channel = channel
+            self._cancel_idle()
         if force:
             self.errors.pop(channel, None)
         if channel in self.results:
@@ -95,6 +163,7 @@ class ContrastController:
         if channel in self.errors:
             return
         if self.job is not None and self.job._source.channel == channel:
+            self.job_abandon = False
             if apply:
                 self.job_apply = True
                 self.job_revision = self.revisions.get(channel, 0)
@@ -104,14 +173,12 @@ class ContrastController:
             self.viewer._wake.set()
 
     def queue_automatic(self):
-        """Sample a focused histogram on demand, without changing image limits.
+        """Warm only the focused channel after 0.5 seconds without focus movement.
 
-        Initial display windows are chosen before the first frame by Viewer.
-        Later estimates are never automatically applied to a visible image.
+        Startup windows are already set before the first displayed frame. This
+        estimate is cached, but never automatically applied to image contrast.
         """
-        self.sync_source()
-        if self.viewer.histogram_mode:
-            self.request(self.viewer.focused_channel)
+        self.focus_changed()
 
     def _apply(self, channel, result):
         if result.window is None:
@@ -134,6 +201,8 @@ class ContrastController:
         """Foreground navigation/rendering calls this only when no frame is queued."""
         viewer = self.viewer
         self.queue_automatic()
+        if self.job_abandon:
+            self.close_job()
         if self.deferred is not None and not viewer.selecting and viewer.editing is None:
             channel, result, revision = self.deferred
             self.deferred = None
@@ -155,6 +224,7 @@ class ContrastController:
                 return bool(self.queue)
             self.job_revision = self.revisions.get(channel, 0)
             self.job_apply = apply
+            self.job_abandon = False
         job = self.job
         channel = job._source.channel
         try:
@@ -162,8 +232,13 @@ class ContrastController:
         except asyncio.CancelledError:
             raise
         except Exception as error:
-            self.errors[channel] = str(error)
-            viewer.message = f"Contrast C{channel} failed: {error}"
+            if not self.job_abandon:
+                self.errors[channel] = str(error)
+                viewer.message = f"Contrast C{channel} failed: {error}"
+            self.close_job()
+            viewer.application.invalidate()
+            return bool(self.queue)
+        if self.job_abandon:
             self.close_job()
             viewer.application.invalidate()
             return bool(self.queue)
@@ -261,11 +336,13 @@ class ContrastController:
         if self.job is not None:
             self.job.close()
             self.job = None
+        self.job_abandon = False
         if self.owner is not None:
             self.owner.release()
             self.owner = None
 
     def close(self):
+        self._cancel_idle()
         self.close_job()
         self.queue.clear()
         self.results.clear()

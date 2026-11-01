@@ -619,8 +619,7 @@ class Viewer:
             return
         self.focused_channel = min(len(self.windows) - 1, max(0, self.focused_channel + delta))
         self.contrast.drag = None
-        if self.histogram_mode:
-            self.contrast.request(self.focused_channel)
+        self.contrast.focus_changed()
         self.application.invalidate()
 
     def select_one(self, index: int) -> None:
@@ -628,6 +627,7 @@ class Viewer:
             return
         if index < len(self.windows):
             self.focused_channel = index
+            self.contrast.focus_changed()
             self.selected_channels = (index,)
             self._set_viewport(self.viewport, limit=True)
 

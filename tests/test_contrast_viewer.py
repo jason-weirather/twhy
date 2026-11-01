@@ -419,3 +419,100 @@ async def test_pending_series_change_cancels_old_channel_numeric_entry(stack, mo
         await ready(viewer, task)
         assert viewer.editing is None and len(viewer.windows) == 1
         assert viewer.windows[0] == IntensityWindow(0, 20000)
+
+
+async def test_focused_channel_distribution_is_debounced_before_histogram_open(stack, monkeypatch):
+    """Wheel browsing must sample only the channel where focus finally settles."""
+    import twhy.viewer.contrast as contrast_ui
+
+    constructed = []
+    original = contrast_ui.ContrastEstimator
+
+    class CountedEstimator(original):
+        def __init__(self, source, *, channel=0, config=None):
+            constructed.append(channel)
+            super().__init__(source, channel=channel, config=config)
+
+    async with contrast_view(stack, automatic=True) as (viewer, _, pipe, _, task):
+        monkeypatch.setattr(contrast_ui, 'ContrastEstimator', CountedEstimator)
+        windows = tuple(viewer.windows)
+        viewer.channel_control.create_content(31, 24)
+        event = lambda kind: MouseEvent(Point(4, 1), kind, MouseButton.NONE, frozenset())
+        # Scroll 0 -> 1 -> 0 -> 1 faster than the half-second dwell.
+        for direction, target in ((MouseEventType.SCROLL_DOWN, 1),
+                                  (MouseEventType.SCROLL_UP, 0),
+                                  (MouseEventType.SCROLL_DOWN, 1)):
+            viewer.channel_control.mouse_handler(event(direction))
+            await eventually(lambda: viewer.focused_channel == target, task)
+            await asyncio.sleep(.10)
+        assert not constructed and not viewer.contrast.queue
+        assert viewer.contrast.job is None
+        await eventually(lambda: 1 in viewer.contrast.results, task)
+        assert constructed == [1]
+        assert 0 not in viewer.contrast.results
+        assert tuple(viewer.windows) == windows  # Prepared, never applied.
+        result = viewer.contrast.results[1]
+        pipe.send_text('H')
+        await eventually(lambda: viewer.histogram_mode, task)
+        viewer.canvas.create_content(*viewer.canvas_size)
+        assert viewer.contrast.results[1] is result
+        assert constructed == [1]  # H reused the warm histogram.
+
+
+async def test_histogram_focus_debounce_and_explicit_h_bypasses_delay(stack, monkeypatch):
+    """Histogram-mode wheel focus waits, but opening H explicitly does not."""
+    import twhy.viewer.contrast as contrast_ui
+
+    constructed = []
+    original = contrast_ui.ContrastEstimator
+
+    class CountedEstimator(original):
+        def __init__(self, source, *, channel=0, config=None):
+            constructed.append(channel)
+            super().__init__(source, channel=channel, config=config)
+
+    async with contrast_view(stack) as (viewer, _, pipe, _, task):
+        monkeypatch.setattr(contrast_ui, 'ContrastEstimator', CountedEstimator)
+        pipe.send_text('H')
+        await histogram_ready(viewer, task)
+        assert constructed == [0]  # Explicit H is not debounced.
+        pipe.send_text('.')
+        await eventually(lambda: viewer.focused_channel == 1, task)
+        await asyncio.sleep(.15)
+        assert constructed == [0] and 1 not in viewer.contrast.results
+        await histogram_ready(viewer, task, 1)
+        assert constructed == [0, 1]
+        pipe.send_text('H')
+        await eventually(lambda: not viewer.histogram_mode, task)
+        # With automatic=False, closing the histogram starts no more sampling.
+        await asyncio.sleep(.60)
+        assert constructed == [0, 1]
+
+
+async def test_abandoned_background_estimate_stops_safely_after_inflight_read(stack, monkeypatch):
+    """Switching focus mid-read must not publish an obsolete passive estimate."""
+    import twhy.viewer.contrast as contrast_ui
+
+    original = contrast_ui.ContrastEstimator.step
+    entered, release = threading.Event(), threading.Event()
+
+    def blocked(job):
+        if job._source.channel == 1 and not entered.is_set():
+            entered.set()
+            assert release.wait(5)
+        return original(job)
+
+    async with contrast_view(stack, automatic=True) as (viewer, _, pipe, _, task):
+        monkeypatch.setattr(contrast_ui.ContrastEstimator, 'step', blocked)
+        pipe.send_text('.')
+        try:
+            await eventually(entered.is_set, task)
+            assert viewer.contrast.job is not None
+            pipe.send_text(',')
+            await eventually(lambda: viewer.focused_channel == 0, task)
+        finally:
+            release.set()
+        await eventually(lambda: viewer.contrast.job is None, task)
+        assert 1 not in viewer.contrast.results
+        assert 1 not in viewer.contrast.completed
+        assert not task.done()
