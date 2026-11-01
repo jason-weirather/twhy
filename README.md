@@ -69,11 +69,10 @@ From a cloned checkout, for development:
 python -m pip install -e '.[dev]'
 ```
 
-The `t_z_support` branch requires the updated **Omeify `z_t_support` checkout
-at `6e926f2` (Omeify 0.23.0) or a descendant with the same dataset API**,
-installed in the same Python environment. A version number alone does not
-identify an unpublished branch revision. Install your local Omeify checkout before installing
-this twhy branch. [Z/T setup and examples](docs/z_t_support.md).
+Z/T navigation requires **Omeify 0.23.1 or newer**, available on PyPI and
+installed automatically by pip or uv through twhy's dependency declaration.
+For the twhy 0.3.0 functionality in this checkout before its own PyPI release,
+use the development installation above. [Z/T setup and examples](docs/z_t_support.md).
 
 PDF support is **included** in the standard install. No special extra or system PDF converter is needed.
 

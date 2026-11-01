@@ -19,9 +19,9 @@ checks, not pixel measurements from the rendered text.
 ## Install
 
 Python **3.11+**. The **PyPI distribution**, terminal command, and Python import
-are all named **`twhy`**. This branch requires `omeify>=0.23.0` and the dataset API from the updated
-`z_t_support` checkout at `6e926f2`. Install that source revision in the same
-environment; the numerical version alone does not certify a branch revision.
+are all named **`twhy`**. Z/T navigation requires the published
+**`omeify>=0.23.1`**, which supplies the public ImageDataset API. Package installation
+resolves Omeify automatically; no development-branch checkout is required.
 [Z/T installation and validation](z_t_support.md).
 
 ```bash

@@ -4,22 +4,23 @@ The initial Z/T implementation targeted twhy `35a38c8` and Omeify `74bf991`.
 The contrast/histogram refinement targets twhy `f8f0ece` and Omeify `6e926f2` (0.23.0). Omeify owns storage,
 axes, geometry and caches; twhy owns navigation and terminal presentation.
 
-## Installation for this development branch
+## Installation
 
-Install both local checkouts into the same Python environment. The Omeify checkout
-must contain the tested `z_t_support` implementation, not just an older package
-that predates the 0.23.0 dataset API. No Java or additional runtime is added.
+Z/T support is included in the published **Omeify 0.23.1+**. Install twhy from
+this checkout to test its 0.3.0 functionality before publication; pip resolves
+the compatible Omeify release automatically. No Java or extra runtime is needed.
 
 ```bash
-python -m pip install -e /path/to/omeify
 python -m pip install -e '.[dev]'
 python -m pip check
-python -c 'import omeify; print(omeify.__file__); print(omeify.open_dataset)'
+python -c 'import omeify; print(omeify.__version__); print(omeify.open_dataset)'
+python -m pytest -q tests/test_zt*.py tests/test_playback*.py tests/test_contrast*.py
 ```
 
-The paths above are explicit placeholders. The declared Omeify minimum is 0.23.0
-for both the plain installation and optional S3 extra. The source checkout used
-for validation is identified above; validate a published wheel separately.
+The minimum is the same for the plain installation and the optional S3 extra.
+Historical source commits above describe development provenance, not installation
+requirements. Validate the installed Omeify distribution in the complete test
+suite before publishing twhy.
 
 ## Controls
 

@@ -27,13 +27,13 @@ def dataset_options(path, kind, *, series=0, group="", s3_endpoint_url=None,
 
 
 def open_ome_dataset(path, kind, **options) -> ImageDataset:
-    """Construct the real dataset, with an actionable error for an older checkout."""
+    """Construct the real dataset, with an actionable error for an incompatible install."""
     import omeify
     open_dataset = getattr(omeify, "open_dataset", None)
     if open_dataset is None:
         raise RuntimeError(
-            "Z/T navigation requires Omeify's ImageDataset API. Install the updated "
-            "Omeify z_t_support checkout (74bf991 or later) in this Python environment."
+            "Z/T navigation requires Omeify's ImageDataset API. "
+            "Install omeify>=0.23.1 in this Python environment."
         )
     return open_dataset(path, **dataset_options(path, kind, **options))
 

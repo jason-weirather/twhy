@@ -464,11 +464,11 @@ def test_tiff_plane_selection_in_all_dimension_orders(tmp_path, axes):
         doc.close()
 
 
-def test_older_omeify_fails_with_branch_install_hint(stack_file, monkeypatch):
+def test_missing_dataset_api_has_actionable_install_hint(stack_file, monkeypatch):
     import omeify
     monkeypatch.delattr(omeify, "open_dataset")
     doc = ImageDocument(stack_file[0])
-    with pytest.raises(RuntimeError, match="updated Omeify z_t_support checkout"):
+    with pytest.raises(RuntimeError, match=r"omeify>=0\.23\.1"):
         doc.initialize()
     assert doc._dataset_handle is None
 
