@@ -31,12 +31,15 @@ for validation is identified above; validate a published wheel separately.
 | PageUp / PageDown | Same on the canvas; with channel-list focus, keep channel paging |
 | `p`, index, Enter | Jump within the active dimension; Escape cancels |
 | Wheel, arrows, `+` / `-` | Existing zoom and pan; the wheel does not scrub Z/T |
+| `P` / playback chip | Start or pause a looping T slideshow; animated GIFs loop on opening |
+| `R` / rate chip | Enter a slideshow rate from 0.1 to 30 fps |
 
 Z, T and series indices are zero-based. A displayed `Z 4/8` means index four,
 last index eight, nine planes total. PDF pages remain one-based and retain their
 existing navigation and refinement. Singleton/absent axes have no scrubbing
 control. Z is active initially when it has multiple sections; otherwise T,
-otherwise Series. Index limits never wrap.
+otherwise Series. Index limits never wrap when stepping manually. Playback wraps T and animated GIF frames,
+but never skips time points merely to catch up with the clock.
 
 Opening an OME image without indices starts at middle Z (`size // 2`) and T=0:
 
@@ -61,7 +64,7 @@ Startup indices are not reapplied to every series.
 Selection freezes one camera and one plane. It does not span Z/T coordinates.
 GeoJSON stays anonymous and contains no source, series or Z/T metadata. Record
 the displayed indices separately and choose that same plane when cropping or
-analyzing the source. No animation, volume projection or 3D annotation is added.
+analyzing the source. No volume projection or 3D annotation is added.
 
 ## Pyramids, resources and responsiveness
 
@@ -95,6 +98,44 @@ Omeify speculative prefetch is not enabled in this first integration.
 Series-count discovery uses one separate public Omeify metadata inspection at
 startup because ImageDataset currently lacks collection descriptors. It reads no
 pixels, but can repeat metadata requests. It is not repeated on Z/T changes.
+
+
+## Time-series slideshow and animated GIFs
+
+**OME-TIFF and OME-Zarr:** An image with more than one time point opens paused.
+**P** plays/pauses the T dimension, leaving Z, camera, channels, contrast,
+gamma and rendering mode unchanged. The default is a **2 fps slideshow**, not a
+claim to reproduce acquisition time. `--play-fps 3` or **R** chooses 0.1..30
+requested frames per second. `--autoplay` opts into starting immediately.
+
+**Animated GIF:** A GIF with multiple frames opens playing and loops, using its
+per-frame encoded delays by default. **P** pauses; brackets/PageUp/PageDown
+step frames; **p** jumps to a zero-based frame, and manual navigation pauses
+playback. `--frame N` selects the opening frame. `--no-autoplay` starts paused.
+**R** or `--play-fps 5` overrides the encoded delays with a constant slideshow
+rate. Zero/sub-40-ms GIF delays are presented with a 40-ms minimum to avoid
+unsafe busy loops. The loop is intentional even if the GIF declares a finite
+repeat count. Static GIFs, APNG and animated WebP retain ordinary fixed-frame
+viewing in this implementation. Snapshots always render just one frame.
+
+Playback is **presentation-paced**: twhy shows each next completed frame, holds
+the previous frame and its label through decoding/rendering, and starts the
+following dwell interval only after publication. If a decoder or remote source
+is slower than the requested rate, observed playback slows without skipping
+frames or queueing an unbounded backlog. Actual observed FPS is therefore
+not guaranteed. No timestamps are invented for OME time points or compared to
+wall-clock acquisition time. A failed read pauses playback and preserves the
+last usable view. Selection, histogram mode, editing a playback rate, or explicit
+navigation also pauses playback.
+
+GIF decoding uses one Pillow GIF reader, respecting disposal/transparency and
+compositing through Pillow, not a homegrown GIF codec. Immutable RGB display
+pyramids are retained under a **64 MiB LRU byte budget**, with at most one
+next-frame preparation queued using the existing source-loader executor. The
+active frame and transient Pillow decoding/pyramid scratch are additional RAM.
+Evicted frames are lazily decoded again. Omeify's existing TIFF/Zarr source cache
+remains separate and persistent throughout T navigation; there is no second
+OME decoder or T-volume memory cache.
 
 ## Deterministic local examples
 

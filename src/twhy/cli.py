@@ -64,7 +64,11 @@ def _write_text(path: Path, text: str, *, overwrite: bool) -> None:
 @click.option("--page", type=click.IntRange(min=1),
               help="One-based PDF page to display (default: 1).")
 @click.option("--frame", "frame_index", type=click.IntRange(min=0),
-              help="Zero-based raster frame, for GIF/APNG/WebP (default: 0; no playback).")
+              help="Zero-based raster frame; animated GIFs can play from this frame.")
+@click.option("--autoplay/--no-autoplay", default=None,
+              help="Interactive: animated GIFs loop by default; OME time series start paused.")
+@click.option("--play-fps", type=click.FloatRange(min=0.1, max=30),
+              help="Slideshow rate in FPS; GIF defaults to its recorded frame delays.")
 @click.option("--pdf-max-dpi", type=click.FloatRange(min=0, min_open=True),
               help="PDF detail ceiling (default: 600 DPI). Viewer opens at up to 144 DPI, "
                    "then refines through 300/600 and the ceiling. Snapshots use the ceiling.")
@@ -140,6 +144,7 @@ def main(
     input_path: str, series: int, group: str, z_index: int | None,
     t_index: int | None, input_format: str, max_remote_mib: float,
     s3_endpoint_url: str | None, s3_anonymous: bool, page: int | None, frame_index: int | None,
+    autoplay: bool | None, play_fps: float | None,
     pdf_max_dpi: float | None, pdf_cache_pages: int | None,
     background: str | None, channels: tuple[int, ...], lower: float | None,
     channel_color_entries: tuple[tuple[int, str], ...],
@@ -175,6 +180,8 @@ def main(
         raise click.UsageError("--lower and --upper must be supplied together")
     if not snapshot and (output_path is not None or ansi):
         raise click.UsageError("--output-path and --ansi require --snapshot")
+    if snapshot and (autoplay is not None or play_fps is not None):
+        raise click.UsageError("--autoplay and --play-fps apply only to interactive viewing")
     if snapshot and any(v is not None for v in
                         (output_text_clip, output_ansi_clip, output_png_clip,
                          output_geojson_clip, clipboard, clip_source)):

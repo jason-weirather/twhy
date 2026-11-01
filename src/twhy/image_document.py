@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .image_input import _background, _index, array_image, image_kind, open_image, pdf_page_count
+from .raster_animation import GIFAnimation, is_gif
 from .ome_navigation import DatasetHandle, initial_plane, series_count
 from .pdf_workers import DEFAULT_PDF_MAX_DPI, pdf_dpi_steps
 from .source_input import display_name, remote_scheme
@@ -81,6 +82,7 @@ class ImageDocument:
                  source_name: str | None = None) -> None:
         self.path = str(path) if remote_scheme(path) else Path(path).resolve()
         self.kind = image_kind(self.path, input_format=input_format)
+        self.animation = None
         self.group, self.z_index, self.t_index = group, z_index, t_index
         self.s3_endpoint_url, self.s3_anonymous = s3_endpoint_url, s3_anonymous
         self.source_name = source_name or display_name(path)
@@ -89,16 +91,6 @@ class ImageDocument:
         self.frame = None if frame is None else _index(frame, "frame")
         self.background = _background(background)
         self._background_option = background
-        if self.kind != "pdf" and pdf_max_dpi is not None:
-            raise ValueError("--pdf-max-dpi applies only to PDF")
-        self.dpi_steps = pdf_dpi_steps(
-            DEFAULT_PDF_MAX_DPI if pdf_max_dpi is None else pdf_max_dpi,
-        ) if self.kind == "pdf" else ()
-        self.initial_index = (self.page or 1) if self.kind == "pdf" else series
-        self.first_index = 1 if self.kind == "pdf" else 0
-        self.count = 0
-        self._dataset_handle: DatasetHandle | None = None
-        self._handle_lock = RLock()
         self.is_ome = (self.kind == "zarr" or
                        self.kind == "tiff" and self.path.suffix.casefold() != ".svs")
         if group and self.kind != "zarr":
@@ -108,10 +100,32 @@ class ImageDocument:
         if self.is_ome and (page is not None or frame is not None or background is not None):
             raise ValueError("OME inputs use --series/--z-index/--t-index; "
                              "PDF/raster options do not apply")
+        if self.kind != "pdf" and pdf_max_dpi is not None:
+            raise ValueError("--pdf-max-dpi applies only to PDF")
+        # Delay opening the persistent GIF decoder until all option validation
+        # is complete. Invalid user input must never leak a file handle.
+        if self.kind == "raster" and is_gif(self.path):
+            if self.series != 0 or self.page is not None:
+                raise ValueError("Animated GIF uses --frame, not --series/--page")
+            animation = GIFAnimation(self.path, background=self.background)
+            if animation.count > 1:
+                self.animation = animation
+                self.kind = "gif"
+            else:
+                animation.close()
+        self.dpi_steps = pdf_dpi_steps(
+            DEFAULT_PDF_MAX_DPI if pdf_max_dpi is None else pdf_max_dpi,
+        ) if self.kind == "pdf" else ()
+        self.initial_index = ((self.page or 1) if self.kind == "pdf" else
+                              (self.frame or 0) if self.kind == "gif" else self.series)
+        self.first_index = 1 if self.kind == "pdf" else 0
+        self.count = 0
+        self._dataset_handle: DatasetHandle | None = None
+        self._handle_lock = RLock()
 
     @property
     def label(self) -> str:
-        return "page" if self.kind == "pdf" else "series"
+        return "page" if self.kind == "pdf" else "frame" if self.kind == "gif" else "series"
 
     @property
     def last_index(self) -> int:
@@ -124,13 +138,18 @@ class ImageDocument:
         return index
 
     def initialize(self) -> DocumentItem:
-        item = self.load(self.initial_index)
+        try:
+            item = self.load(self.initial_index)
+        except BaseException:
+            self.close()
+            raise
         try:
             self.count = (pdf_page_count(self.path) if self.kind == "pdf" else
                           series_count(self.path, self.kind, series=self.series, group=self.group,
                                        s3_endpoint_url=self.s3_endpoint_url,
                                        s3_anonymous=self.s3_anonymous) if self.is_ome else
-                          len(item.image.series_names) if self.kind == "tiff" else 1)
+                          len(item.image.series_names) if self.kind == "tiff" else
+                          self.animation.count if self.kind == "gif" else 1)
             self.validate_index(self.initial_index)
             self.activate(item)
             return item
@@ -151,14 +170,17 @@ class ImageDocument:
         dpi = self.dpi_steps[0] if self.kind == "pdf" else None
         stack = ExitStack()
         try:
-            image = stack.enter_context(open_image(
-                self.path, series=index if self.kind in {"tiff", "zarr"} else self.series,
-                page=index if self.kind == "pdf" else self.page, frame=self.frame,
-                pdf_dpi=dpi, background=self._background_option, group=self.group,
-                z_index=self.z_index, t_index=self.t_index,
-                s3_endpoint_url=self.s3_endpoint_url, s3_anonymous=self.s3_anonymous,
-                input_format="zarr" if self.kind == "zarr" else "auto",
-            ))
+            if self.kind == "gif":
+                image = stack.enter_context(array_image(self.animation.arrays(index)))
+            else:
+                image = stack.enter_context(open_image(
+                    self.path, series=index if self.kind in {"tiff", "zarr"} else self.series,
+                    page=index if self.kind == "pdf" else self.page, frame=self.frame,
+                    pdf_dpi=dpi, background=self._background_option, group=self.group,
+                    z_index=self.z_index, t_index=self.t_index,
+                    s3_endpoint_url=self.s3_endpoint_url, s3_anonymous=self.s3_anonymous,
+                    input_format="zarr" if self.kind == "zarr" else "auto",
+                ))
             size = (sum(int(np.prod(level.shape)) * image.dtype.itemsize for level in image.levels)
                     if self.kind == "pdf" else 0)
             return DocumentItem(stack, image, index=index, dpi=dpi, nbytes=size)
@@ -214,6 +236,8 @@ class ImageDocument:
             owner, self._dataset_handle = self._dataset_handle, None
         if owner is not None:
             owner.release()
+        if self.animation is not None:
+            self.animation.close()
 
     def from_arrays(self, index: int, dpi: float, arrays) -> DocumentItem:
         stack = ExitStack()
@@ -228,6 +252,7 @@ class ImageDocument:
     def item_name(self, item: DocumentItem) -> str:
         selection = (f"page {item.index}/{self.count} | {item.dpi:g} DPI raster"
                      if self.kind == "pdf" else
+                     f"frame {item.index}/{self.count - 1} (0-based)" if self.kind == "gif" else
                      f"series {item.index} of {self.count} (0-based)")
         for axis in item.axis_info:
             if axis.size > 1:

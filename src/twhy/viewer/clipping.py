@@ -148,6 +148,8 @@ class ClipController:
         except (ValueError, RuntimeError) as error:
             self.notify(str(error))
             return
+        if hasattr(viewer, "playback"):
+            viewer.playback.pause()
         self.selection = selection
         self.viewport, self.raster_shape = view, viewer.session.info.shape
         self.pdf_page = (nav.active.index if nav is not None and nav.document.kind == "pdf"

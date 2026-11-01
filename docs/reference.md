@@ -92,7 +92,11 @@ twhy document.pdf --pdf-max-dpi 450        # 144 -> 300 -> 450 DPI
 twhy document.pdf --pdf-max-dpi 1200       # 144 -> 300 -> 600 -> 1200 DPI
 twhy document.pdf --pdf-cache-pages 1      # current page only; no neighbor prefetch
 
-twhy animation.gif --frame 5               # raster frames are ZERO-based
+twhy animation.gif                         # loop animated GIF using frame delays
+twhy animation.gif --frame 5               # start at a zero-based frame
+twhy animation.gif --no-autoplay           # inspect GIF frames without autoplay
+twhy experiment.ome.tif --play-fps 3       # OME T slideshow starts paused
+twhy experiment.ome.tif --autoplay         # opt in to automatic T slideshow
 twhy illustration.webp --snapshot --ansi -o preview.ansi
 ```
 
@@ -164,7 +168,8 @@ capable terminals and simple text otherwise. There is no second viewer.
 | OME-Zarr | Omeify 0.4/0.5/0.6 datasets: local/HTTP(S)/S3, regional chunks, channels, series and Z/T; shifted XY levels are skipped. |
 | Aperio SVS (`.svs`, case-insensitive) | Omeify AperioSVSReader, native RGB and supplied pyramid, regional decoding; optional bounded runtime overview cache. |
 | PNG, JPEG/JPG, WebP, BMP, TGA | Decode once; retain the base raster and an in-memory pyramid. |
-| GIF, APNG, animated WebP | Frame 0 by default, or select `--frame N`; no animation playback. |
+| Animated GIF | Loop using GIF delays by default; zero-based frame navigation and a bounded display-pyramid cache. |
+| APNG, animated WebP | View a selected frame (`--frame N`); no interactive animation yet. |
 | ICO | View the decoder's default icon representation. |
 | PPM, PGM, PBM | Ordinary portable raster formats through Pillow. |
 | PDF (standard install) | Navigate pages; quick RGB preview followed by sharper, RAM-only pyramids. |
@@ -213,8 +218,8 @@ The mouse wheel over the image remains zoom, not page turning.
 The same controls switch **OME-TIFF and SVS series**, if provided by the reader.
 PDF page numbers are **one-based**; TIFF/SVS series indices remain
 **zero-based**, matching `--page` and `--series`.
-The limits are shown in the jump prompt. Raster frames remain startup-only via
-`--frame`, with no animation playback or frame-navigation UI in this pass.
+The limits are shown in the jump prompt. Animated GIFs also expose a Frame
+navigator; APNG/WebP frame selection remains startup-only via `--frame`.
 
 A Z/T step preserves the exact base-pixel camera, selected channels, focused
 channel, pseudocolors, contrast windows, gamma and rendering mode. It uses another
@@ -238,6 +243,23 @@ new series unless explicitly overridden. Opening an unsupported series reports
 an error and retains the previous view. OME reads still use only Omeify;
 small, budgeted native-level overview scans may now run before the first frame,
 with larger eligible scans continuing incrementally during idle time.
+
+### GIF and OME T playback
+
+GIF animations loop automatically with encoded frame delays once their first
+frame is presented. OME time series start paused and use a 2 fps slideshow when
+**P** is pressed. **P** plays/pauses; **R** or `--play-fps` sets 0.1..30 requested
+frames per second. `--autoplay` and `--no-autoplay` override the format defaults.
+Manual stepping/jumping pauses playback. Explicit `--frame N` opens an animated
+GIF at zero-based frame N. Static images and PDF do not acquire playback controls.
+
+Frames are presentation-paced, not timestamp-synchronized: an unavailable or
+slow frame delays the slideshow rather than being skipped. The previous complete
+frame stays visible during loading, and a read failure pauses playback. GIFs use
+Pillow compositing with a 64 MiB prepared-pyramid LRU and one speculative next
+frame on the existing loader. This cap excludes the active frame and decoder
+scratch. OME time reads retain Omeify's source cache and exact-section pyramid
+semantics. See [the Z/T guide](z_t_support.md#time-series-slideshow-and-animated-gifs).
 
 ### Progressive PDF detail
 
@@ -594,7 +616,9 @@ still be split by tmux; twhy does not implement a shell or manage tmux sessions.
 | `r` or Home | Fit the whole image; cached overview when ready, sampled preview while preparing |
 | `d`; click Z / T / Series | Choose the dimension navigated by brackets/PageUp/PageDown |
 | PageDown / `]`; PageUp / `[` | Next / previous item on the active dimension |
-| `p`, number, Enter | Jump to active Z/T/series index (0-based); PDF pages stay 1-based |
+| `p`, number, Enter | Jump to active Z/T/series/GIF frame (0-based); PDF pages stay 1-based |
+| `P`; click play/pause | Loop GIF frames or OME time points, without skipping slow frames |
+| `R`; click rate | Override GIF delays or choose an OME T slideshow rate (0.1..30 fps) |
 | `s`; selection toolbar | Select/copy a rectangle; see the selection controls above. |
 | `c`; Tab | Toggle the sidebar; move focus between image and channels |
 | `,` / `.`; sidebar wheel | Focus the previous / next channel; scroll through the full list |
@@ -1161,8 +1185,10 @@ multi-marker images. Python sessions accept an open Omeify intensity or RGB Imag
 including array and procedural backends. PDF pages and TIFF series can be navigated
 in-app; `--page` and `--series` choose the initial selection. OME-TIFF and
 OME-Zarr support Z-only, T-only and combined Z/T navigation; `--z-index` and
-`--t-index` choose the initial plane. Raster `--frame` selection remains startup-only.
-Coarse-volume XYZ previews, time playback, projections, multi-file TIFF, label-specific
+`--t-index` choose the initial plane. Raster `--frame` selection remains startup-only for APNG/WebP; animated GIFs can
+be played and stepped in the existing document navigator.
+Coarse-volume XYZ previews, acquisition-timestamp-synchronized playback, projections,
+multi-file TIFF, label-specific
 categorical coloring, raw vendor formats, persistent annotation editing, segmentation overlays, saved view settings and ICC-managed color are not implemented. Explicit categorical LabelImages are rejected rather than assigning continuous
 brightness to arbitrary object IDs. OME-TIFF alone does not declare label semantics;
 CLI users must not interpret numeric label brightness as expression. The reader fails clearly

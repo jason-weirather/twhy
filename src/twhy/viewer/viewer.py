@@ -36,6 +36,7 @@ from .contrast import ContrastController
 from .initial_contrast import STARTUP_CONTRAST_SECONDS, initial_contrast_config
 from .clipping import ClipController
 from .mode_navigation import ModeNavigation
+from .playback import PlaybackController
 from .controls import (
     CanvasControl, ChannelControl, clip_fragments, navigation_fragments, safe_label,
 )
@@ -67,6 +68,7 @@ class Viewer:
         clipboard="auto", clip_source="auto", clip_overwrite=True,
         startup_overview_seconds: float = DEFAULT_STARTUP_OVERVIEW_SECONDS,
         stack_contrast: bool = True, contrast_config=None,
+        play_fps: float | None = None, autoplay: bool | None = None,
     ) -> None:
         self.startup_overview_seconds = validate_startup_seconds(startup_overview_seconds)
         # Quick-cache work belongs to exactly one initial camera generation.
@@ -77,6 +79,7 @@ class Viewer:
         self._contrast_started_for = None  # weak reference: do not retain old plane sessions
         self.session = session
         self.navigation = navigation
+        self.playback = PlaybackController(self, fps=play_fps, autoplay=autoplay)
         self.selected_channels = session._select_channels(channels)
         self.focused_channel = self.selected_channels[0]
         self.windows = [window] * len(session.info.channels)
@@ -138,6 +141,8 @@ class Viewer:
             return f" Go to {nav.destination_label} ({first}..{last}; Enter / Esc): "
         if self.editing == "color":
             return " Color (hex/name/default; Enter / Esc): "
+        if self.editing == "play-fps":
+            return " Playback FPS (0.1..30; Enter / Esc): "
         units = "unitless" if self.editing == "gamma" else "raw units"
         return f" {self.editing or ''} ({units}; Enter / Esc): "
 
@@ -225,12 +230,15 @@ class Viewer:
         if self.navigation is not None:
             self.navigation.start(self)
         def start_tasks():
+            self.playback.start()
+            self.application.create_background_task(self.playback.run())
             self.application.create_background_task(self._pump())
             self.application.create_background_task(self._animate_activity())
 
         try:
             await self.application.run_async(pre_run=start_tasks)
         finally:
+            self.playback.close()
             # Worker cancellation does not interrupt a TIFF codec. Join before
             # allowing the caller to leave its source context manager.
             try:
@@ -747,6 +755,7 @@ class Viewer:
             self._blocks_restore = saved
 
     def toggle_histogram(self):
+        self.playback.pause()
         if self.selecting or self.editing is not None:
             return
         if self.frame is None and not self.histogram_mode:
@@ -817,7 +826,16 @@ class Viewer:
     def begin_edit(self, field: str) -> None:
         if self.selecting or self.editing is not None:
             return
-        if field == "color":
+        if field == "play-fps":
+            if not self.playback.available:
+                self.message = "This image has no playable time axis."
+                self.application.invalidate()
+                return
+            self.playback.pause()
+            position = self.navigation.display_position
+            index = position[0] if self.playback.kind == "gif" else position[2]
+            text = f"{self.playback.fps or (1 / self.playback._duration(index)):g}"
+        elif field == "color":
             if self.session.info.is_rgb:
                 self.message = ("RGB uses native colors; channel pseudocolors apply "
                                 "to intensity images.")
@@ -844,6 +862,7 @@ class Viewer:
     def begin_destination(self) -> None:
         if self.selecting:
             return
+        self.playback.pause()
         if self.navigation is None:
             self.message = "Page/series/Z/T navigation is available for PDF and OME files."
             self.application.invalidate()
@@ -864,6 +883,17 @@ class Viewer:
             self.application.invalidate()
 
     def _accept_edit(self, buffer: Buffer) -> bool:
+        if self.editing == "play-fps":
+            try:
+                self.playback.set_fps(float(buffer.text))
+            except (ValueError, TypeError) as error:
+                self.message = f"Invalid playback rate: {error}"
+                self.application.invalidate()
+                return True
+            self.cancel_edit()
+            self.message = f"Slideshow rate: {self.playback.rate_label}; P to play."
+            self.application.invalidate()
+            return True
         if self.editing == "color":
             return self._accept_color(buffer.text)
         if self.editing in ("save-text", "save-ansi", "save-png", "save-geojson"):
@@ -982,8 +1012,9 @@ class Viewer:
         if self.show_help:
             return (" | m: artwork | M: ASCII | t: toggle color | q: quit\n"
                     " Arrows: pan | +/-: zoom | r: fit | Tab: channels "
-                    "| d: axis | [/]: step | p: jump | H:hist A:stack auto L:log")
-        return " | H:hist A:auto h:hue m:art M:ASCII ?:help q:quit\n " + safe_label(self.message)
+                    "| d: axis | [/]: step | p: jump | P:play R:rate | H:hist A:auto")
+        return (" | P:play R:rate H:hist A:auto h:hue m:art M:ASCII ?:help q:quit\n "
+                + safe_label(self.message))
 
     def __repr__(self) -> str:
         return (f"Viewer(channels={self.selected_channels}, mode={self.renderer.mode!r}, "

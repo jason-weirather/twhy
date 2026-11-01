@@ -61,6 +61,7 @@ class DocumentNavigation:
         self._wake: asyncio.Event | None = None
         self._loader: ThreadPoolExecutor | None = None
         self._load_task: asyncio.Task | None = None
+        self._frame_prefetch: tuple[int, int] | None = None
         self._refine_task: asyncio.Task | None = None
         self._tasks: set[asyncio.Task] = set()
         self._workers: PdfWorkers | None = None
@@ -87,6 +88,8 @@ class DocumentNavigation:
         """Only independently navigable dimensions; ordinary documents keep theirs."""
         if self.document.kind == "pdf":
             return ("page",)
+        if self.document.kind == "gif":
+            return ("frame",)
         dimensions = tuple(axis.name for axis in self.active.axis_info if axis.size > 1)
         return dimensions + (("series",) if self.document.count > 1 or not dimensions else ())
 
@@ -118,6 +121,12 @@ class DocumentNavigation:
             return 0, axis.size - 1
         return self.document.first_index, self.document.last_index
 
+    def _pause_for_manual_navigation(self) -> None:
+        """Direct user navigation takes priority over the slideshow clock."""
+        playback = getattr(self.viewer, "playback", None)
+        if playback is not None and not playback._advancing:
+            playback.pause()
+
     def select_axis(self, axis: str) -> None:
         if self._closed or self.viewer is None or self.viewer.selecting:
             return
@@ -125,6 +134,7 @@ class DocumentNavigation:
             return
         if axis not in self.axes:
             raise ValueError(f"Unavailable navigation dimension: {axis}")
+        self._pause_for_manual_navigation()
         if self.target != self.active.index and axis in ("Z", "T"):
             self.viewer.message = "The requested series is opening; its Z/T controls follow it."
         else:
@@ -145,6 +155,7 @@ class DocumentNavigation:
         return index
 
     def go_destination(self, index: int) -> None:
+        self._pause_for_manual_navigation()
         index = self.validate_destination(index)
         if self.axis in ("Z", "T"):
             z = index if self.axis == "Z" else self.target_z
@@ -154,6 +165,7 @@ class DocumentNavigation:
             self.go(index)
 
     def go_plane(self, *, z_index=None, t_index=None) -> None:
+        self._pause_for_manual_navigation()
         if (self._closed or self.viewer.selecting or
                 self.target != self.active.index or self._target_auto):
             return
@@ -185,6 +197,7 @@ class DocumentNavigation:
     def _retarget(self) -> None:
         """Invalidate in-flight results and coalesce to one immutable destination."""
         self._epoch += 1
+        self._frame_prefetch = None
         self.error = ""
         self._blocked_upgrade = None
         if (self._refine_task is not None and not self._refine_task.done()
@@ -218,6 +231,8 @@ class DocumentNavigation:
             self.viewer.application.invalidate()
 
     def _report_error(self, message: str) -> None:
+        if self.viewer is not None and hasattr(self.viewer, "playback"):
+            self.viewer.playback.pause()
         self.error = message
         if self.viewer is not None:
             self.viewer.message = message
@@ -248,7 +263,8 @@ class DocumentNavigation:
                     :max(0, self.cache_pages - 1)]
 
     def go(self, index: int) -> None:
-        """Request a page/series; dimension-focused controls call go_destination."""
+        """Request a page/series/frame; dimension-focused controls call go_destination."""
+        self._pause_for_manual_navigation()
         index = self.document.validate_index(index)
         if self._closed or index == self.target or self.viewer.selecting:
             return
@@ -308,6 +324,17 @@ class DocumentNavigation:
             auto = self._target_auto
             if not self.loading or (self.pending is not None
                                     and self._matches_target(self.pending)):
+                if self.document.kind == "gif" and self._frame_prefetch is not None:
+                    frame, expected_epoch = self._frame_prefetch
+                    self._frame_prefetch = None
+                    if expected_epoch == self._epoch and not self._closed:
+                        try:
+                            await asyncio.get_running_loop().run_in_executor(
+                                self._loader, self.document.animation.arrays, frame)
+                        except Exception:
+                            # Speculation must never fail a usable current frame.
+                            # The error is reported if that frame is really requested.
+                            pass
                 continue
             try:
                 # One loader; repeated keys replace the requested destination,
@@ -350,7 +377,8 @@ class DocumentNavigation:
         viewer = self.viewer
         old_session, old_item = self.session, self.active
         same_series = item.index == old_item.index
-        plane_change = same_series and item.position != old_item.position
+        plane_change = ((same_series and item.position != old_item.position) or
+                        (self.document.kind == "gif" and item.index != old_item.index))
         same_page = same_series and self.document.kind == "pdf"
         try:
             session = self._session(item)
@@ -397,7 +425,8 @@ class DocumentNavigation:
             self._blocked_upgrade = None
             self.error = ""
         self.document.activate(item)
-        if not same_series and viewer.editing in ("destination", "lower", "upper", "gamma"):
+        if not same_series and not plane_change and viewer.editing in (
+                "destination", "lower", "upper", "gamma"):
             # Numeric limits belong to the source/channel that opened the editor.
             viewer.cancel_edit()
         self.session, self.active = session, item
@@ -477,6 +506,13 @@ class DocumentNavigation:
         self.presented_position = self.active.position
         self.presented_name = self.document.item_name(self.active)
         self._release_rollback()
+        if hasattr(self.viewer, "playback"):
+            self.viewer.playback.presented(self.active.position)
+            if (self.document.kind == "gif" and self.viewer.playback.playing and
+                    self.document.animation.can_prefetch and not self._closed):
+                self._frame_prefetch = ((self.active.index + 1) % self.document.count,
+                                        self._epoch)
+                self._wake.set()
         if self._closed or self.document.kind != "pdf" or self.active.index != self.target:
             return
         cached = self.cache.get(self.target)
@@ -555,6 +591,7 @@ class DocumentNavigation:
     def status(self, *, compact: bool = False) -> str:
         doc = self.document
         text = (f"Page {self.active.index}/{doc.count}" if doc.kind == "pdf" else
+                f"Frame {self.display_position[0]}/{doc.count - 1}" if doc.kind == "gif" else
                 f"Series {self.active.index} of {doc.count} (0-based)")
         for axis in self.active.axis_info:
             if axis.size > 1:

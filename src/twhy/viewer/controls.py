@@ -233,6 +233,24 @@ def navigation_fragments(viewer: "Viewer") -> list:
     fragments = [("class:status", " [<] ", previous),
                  ("class:status", "[>] ", following),
                  ("class:status", "[p: go] ", jump)]
+    playback = getattr(viewer, "playback", None)
+    if playback is not None and playback.available:
+        def play(event):
+            if (viewer.editing is None and not viewer.selecting and
+                    event.button == MouseButton.LEFT and
+                    event.event_type == MouseEventType.MOUSE_UP):
+                playback.toggle()
+        def rate(event):
+            if (viewer.editing is None and not viewer.selecting and
+                    event.button == MouseButton.LEFT and
+                    event.event_type == MouseEventType.MOUSE_UP):
+                viewer.begin_edit("play-fps")
+        fragments.append(("class:panel.selected" if playback.playing else "class:status",
+                          "[Ⅱ P] " if playback.playing else "[▶ P] ", play))
+        columns = (viewer.application.output.get_size().columns
+                   if viewer.application is not None else 100)
+        if columns >= 95:
+            fragments.append(("class:status", f"[R: {playback.rate_label}] ", rate))
     if any(axis in ("Z", "T") for axis in nav.axes):
         def choose(axis):
             def clicked(event):

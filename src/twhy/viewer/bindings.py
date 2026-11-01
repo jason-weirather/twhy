@@ -167,6 +167,14 @@ def create_bindings(viewer: "Viewer") -> KeyBindings:
     for key, field in (("l", "lower"), ("u", "upper"), ("g", "gamma"), ("h", "color")):
         bindings.add(key, filter=browsing)(edit(field))
 
+    @bindings.add("P", filter=browsing)
+    def toggle_playback(event):
+        viewer.playback.toggle()
+
+    @bindings.add("R", filter=browsing)
+    def playback_rate(event):
+        viewer.begin_edit("play-fps")
+
     @bindings.add("H", filter=browsing)
     def histogram(event):
         viewer.toggle_histogram()

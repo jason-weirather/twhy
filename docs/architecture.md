@@ -111,6 +111,18 @@ with a latest-pending-request slot. There is no unbounded queue of old wheel eve
 waiting to become images. Accepted completed frames carry their generation number;
 a stale generation cannot replace the current request's result.
 
+## Presentation-paced animation
+
+`raster_animation.py` uses one Pillow GIF handle for composited frames and a
+64 MiB LRU of immutable display pyramids; only the source-loader executor
+decodes and prepares additional frames. `viewer/playback.py` owns an event-loop
+clock which advances only after the preceding complete frame has published.
+GIFs default to encoded delays and autoplay; OME time points default to a paused
+2 fps slideshow. Manual navigation overrides the clock. A slow frame is held,
+not skipped or falsely relabelled, and failures pause playback. No decoder is
+called by the clock, terminal paint callback, or UI key handler. Speculative
+GIF preparation is limited to one next frame on the same source loader.
+
 ## Local/remote resource boundary
 
 `source_input.resolve_input()` owns the source lifetime. Local OME-Zarr directories

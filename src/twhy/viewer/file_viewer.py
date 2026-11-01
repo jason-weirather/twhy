@@ -20,6 +20,7 @@ from .viewer import Viewer
 async def _view_resolved_file(path, *, series=0, page=None, frame=None, pdf_max_dpi=None,
                     pdf_cache_pages=None, background=None, channels=(0,), window=None,
                     channel_colors=None, stack_contrast=True, contrast_config=None,
+                    play_fps=None, autoplay=None,
                     mode="blocks", color=True, invert=None, cell_aspect=2.0,
                     viewport=None, cache_mib=32.0, max_read_pixels=4_194_304,
                     overview_cache_mib=DEFAULT_OVERVIEW_CACHE_MIB,
@@ -53,6 +54,8 @@ async def _view_resolved_file(path, *, series=0, page=None, frame=None, pdf_max_
     if document.kind != "pdf" and pdf_cache_pages is not None:
         raise ValueError("--pdf-cache-pages applies only to PDF")
     if document.kind == "raster":
+        if play_fps is not None or autoplay is not None:
+            raise ValueError("Playback requires an animated GIF or OME time axis")
         name = document.source_name
         if frame is not None:
             name += f" | frame {frame} (0-based)"
@@ -72,7 +75,11 @@ async def _view_resolved_file(path, *, series=0, page=None, frame=None, pdf_max_
                          stack_contrast=stack_contrast, contrast_config=contrast_config,
                          **clipping).run(input=input, output=output)
         return
-    initial = document.initialize()
+    try:
+        initial = document.initialize()
+    except BaseException:
+        document.close()
+        raise
     try:
         navigation = DocumentNavigation(
             document, initial,
@@ -93,7 +100,8 @@ async def _view_resolved_file(path, *, series=0, page=None, frame=None, pdf_max_
                         window=window, channel_colors=channel_colors,
                         renderer=renderer, viewport=viewport,
                         startup_overview_seconds=startup_overview_seconds,
-                        stack_contrast=stack_contrast, contrast_config=contrast_config, **clipping)
+                        stack_contrast=stack_contrast, contrast_config=contrast_config,
+                        play_fps=play_fps, autoplay=autoplay, **clipping)
         await viewer.run(input=input, output=output)
     finally:
         # Idempotent stop/close also covers invalid initial channel selection or

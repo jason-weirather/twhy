@@ -87,6 +87,8 @@ twhy slide.ome.tif                     # OME-TIFF, grayscale or multichannel
 twhy /data/sample.ome.zarr             # local OME-Zarr
 twhy time-depth.ome.tif                # middle Z, T=0; d chooses navigation axis
 twhy experiment.zarr --z-index 15 --t-index 12  # explicit zero-based startup plane
+twhy animation.gif                     # animated GIF plays and loops automatically
+twhy time-depth.ome.tif --play-fps 3   # T slideshow rate; press P to play
 
 # Compose two fluorescence channels with chosen colors:
 twhy slide.ome.tif --channel 0 --channel 2 \
@@ -95,11 +97,13 @@ twhy slide.ome.tif --channel 0 --channel 2 \
 
 The initial view fits the image. Wheel zoom is anchored to the pointer; pan with the mouse or arrow keys. The terminal sidebar keeps channels, colors, and contrast controls at hand.
 
-Z/T changes preserve the camera, channels, colors and contrast. A new series still
-fits and initializes its own channels. Omitted startup indices use middle Z
+Z/T changes preserve the camera, channels, colors and contrast. OME time series
+start paused; press **P** for best-effort looping slideshow playback, **R** to set
+frames/second. Animated GIFs play and loop by default using their encoded delays.
+Manual stepping pauses playback. A new series still fits and initializes its own channels. Omitted startup indices use middle Z
 (`size // 2`) and T=0 for present axes; invalid explicit indices fail. Only exact-section
 pyramid levels are used automatically, including when the input stores an XYZ
-pyramid. [Navigation, limitations, and public test inputs](docs/z_t_support.md).
+pyramid. [Navigation, playback, limitations, and public test inputs](docs/z_t_support.md).
 
 
 ## Why a terminal viewer?
@@ -120,6 +124,7 @@ pyramid. [Navigation, limitations, and public test inputs](docs/z_t_support.md).
 | Zoom; pan; fit image | Wheel or `+`/`-`; arrows or drag; `r`/Home |
 | Choose navigation dimension | `d`, or click Z / T / Series in the navigation bar |
 | Step/jump within that dimension | `]` / `[` or PageDown / PageUp; `p` to jump (PDF pages remain one-based) |
+| GIF / time playback | `P` plays/pauses; `R` sets 0.1–30 frames/s; animated GIFs loop by default |
 | Toggle a channel; focus another | Click channel/Space; `,` and `.` |
 | Histogram / dataset contrast | `H` toggles histogram; `A` estimates/applies a fixed range; `L` toggles log counts; drag `^L`/`^U` |
 | Adjust channel color or contrast | `h` (hue); `l`/`u` (limits); `g` (gamma); `a` (auto window) |
@@ -199,7 +204,8 @@ grid, so zoom in before drawing for finer boundaries.
 | Aperio SVS | RGB whole-slide viewing using available stored levels |
 | OME-Zarr | Local/HTTP(S)/optional S3, regional reads, series and Z/T navigation |
 | PNG, JPEG, WebP, BMP, TGA, PPM | Ordinary raster viewing with zoom and pan |
-| GIF, APNG, animated WebP | View a selected frame (not animation playback) |
+| Animated GIF | Loop by default using GIF delays, with frame stepping and a bounded prepared-frame cache |
+| APNG, animated WebP | View a selected frame; interactive playback is not implemented |
 | PDF | Navigate pages; progressively improve raster detail; copy embedded text from a rectangular selection |
 
 For advanced flags, channel/series semantics, color modes, cache limits, clipboard behavior, and format caveats, use the **[full reference](https://github.com/jason-weirather/twhy/blob/main/docs/reference.md)**. Architecture notes are in [docs/architecture.md](https://github.com/jason-weirather/twhy/blob/main/docs/architecture.md).
