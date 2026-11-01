@@ -26,7 +26,7 @@ suite before publishing twhy.
 
 | Control | Behavior |
 |---|---|
-| `d` | Cycle available dimensions: Z, T, Series |
+| `d` | Cycle available dimensions: Z, T, Series (where present) |
 | Click Z / T / S in the navigation bar | Choose that dimension; `*` marks the active one |
 | `[` / `]` | Step backward / forward on the chosen dimension |
 | PageUp / PageDown | Same on the canvas; with channel-list focus, keep channel paging |
@@ -34,6 +34,13 @@ suite before publishing twhy.
 | Wheel, arrows, `+` / `-` | Existing zoom and pan; the wheel does not scrub Z/T |
 | `P` / playback chip | Start or pause a looping T slideshow; animated GIFs loop on opening |
 | `R` / rate chip | Enter a slideshow rate from 0.1 to 30 fps |
+
+**Multiple image series:** `d` cycles into Series when the file contains more
+than one image series. `[` / `]` then switch entire series, not just Z planes;
+`p` followed by a zero-based series index jumps directly. Use `d` again to
+choose Z or T within the new series. Entering another series fits its image,
+resets its selected channels and uses middle Z / T=0; Z/T steps within the
+same series preserve display settings. This works in OME-TIFF and OME-Zarr.
 
 Z, T and series indices are zero-based. A displayed `Z 4/8` means index four,
 last index eight, nine planes total. PDF pages remain one-based and retain their
@@ -182,6 +189,21 @@ writing. The TIFF/XY-Zarr products have exact-section XY reductions; XYZ-Zarr
 exercises the rule excluding Z-reduced levels from an exact optical section.
 The destination products must not already exist. This is a synthetic test pattern,
 not a biological simulation. Ordinary codecs, Zarr and `ome-schema` are required.
+
+For a **two-series OME-TIFF where each series has full Z and T**, use the
+separate lightweight, independently written fixture (no Zarr dependency):
+
+```bash
+python examples/make_multiseries_zt_demo.py \
+  -o ~/Scratch/twhy-multiseries-zt.ome.tif
+twhy ~/Scratch/twhy-multiseries-zt.ome.tif
+```
+
+Press `d` to select Series, step with `]`, then choose Z or T with `d`.
+Omeify's current `concat` operation cannot duplicate whole multidimensional
+series: it selects 2D observations and requires explicit Z/T indices. The
+example uses `tifffile`'s OME multi-series writer for small *synthetic* stacks,
+without modifying Omeify or claiming to preserve arbitrary source metadata.
 
 ## Public examples discussed during planning
 

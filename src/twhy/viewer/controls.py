@@ -166,7 +166,7 @@ class ChannelControl(UIControl):
               " Limits: auto pending")],
             [("class:panel", f" Gamma:{window.gamma:g}" if window else " Gamma:1")],
             color_line,
-            [("class:panel", " l/u/g: edit | a: auto")],
+            [("class:panel", " l/u/g: edit | a: preview")],
             [("class:panel", " Space: toggle | Enter: solo")],
             [("class:panel", " Wheel/arrows/PgUp/PgDn: move")],
             [("class:panel", " Home/End: first/last")],

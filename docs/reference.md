@@ -633,7 +633,7 @@ still be split by tmux; twhy does not implement a shell or manage tmux sessions.
 | Enter; Escape or Ctrl-C while editing | Apply; cancel numeric/color entry |
 | `a` | Estimate and lock contrast from the focused channel's visible preview |
 | `H` | Toggle the focused channel's text histogram; drag `^L`/`^U` or use `l/u` |
-| `A` | Estimate/apply a fixed dataset-wide (or single-Image) range for the focused channel |
+| `A` | Experimental dataset-wide estimate/apply; preferably inspect the `H` histogram and its sliders first (key works in image view too) |
 | `L` in histogram view | Toggle log/linear counts; raw intensities remain linear |
 | `m` | Enter/cycle detail / shape / simple; include blocks only when color is on |
 | `b` | Temporarily preview colored blocks; restore the previous style/color, including strict ASCII |
@@ -798,6 +798,9 @@ The X axis is raw intensity; L toggles only the Y count scaling. Carets ^L/^U
 are the same display limits edited by l/u. Dragging them never rereads pixels.
 Intervals refer to the estimator's recommendation, not a manually dragged limit.
 A deliberately applies the cached recommendation or computes it if absent.
+The normal image footer emphasizes `H`, `l/u/g` and navigation instead; the
+experimental uppercase `A` recommendation is advertised in histogram mode,
+although its existing key binding still works from image view.
 
 Histogram results retain bounded sample arrays under a 32 MiB payload LRU.
 Eviction does not alter locked windows. Image selections/GeoJSON export are

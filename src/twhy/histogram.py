@@ -254,7 +254,7 @@ def render_histogram(estimate: ContrastEstimate, *, window: IntensityWindow | No
         text(handle_row + 2, clipping, tone="muted")
         text(handle_row + 3, "! " + warning if warning else samples,
              tone="warning" if warning else "muted")
-        text(rows - 1, "H image  A auto  L log  l/u edit", tone="muted")
+        text(rows - 1, "H image  A estimate/apply  L log  l/u edit", tone="muted")
     else:
         text(handle_row + 2, clipping, tone="muted")
         text(handle_row + 3, samples, tone="muted")
@@ -264,7 +264,7 @@ def render_histogram(estimate: ContrastEstimate, *, window: IntensityWindow | No
         text(handle_row + 5, "! " + warning if warning else
              "Display limits only; source pixels unchanged.",
              tone="warning" if warning else "muted")
-        text(rows - 1, "H image  A auto  L log/linear  l/u edit  drag " +
+        text(rows - 1, "H image  A estimate/apply  L log/linear  l/u edit  drag " +
              ("^" if ascii_only else "▲"), tone="muted")
     if bg is not None:
         bg[rows - 1] = palette["header"]

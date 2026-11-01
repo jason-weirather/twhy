@@ -775,7 +775,7 @@ class Viewer:
         self.contrast.drag = None
         if self.histogram_mode:
             self.contrast.request(self.focused_channel)
-            self.message = "Histogram: H image, A stack auto, L log counts, l/u edit; drag carets."
+            self.message = "Histogram: drag L/U handles or enter l/u; A applies estimated range."
         else:
             self.message = "Image view restored; contrast stays fixed."
             self.request_frame(reuse_samples=True)
@@ -1014,12 +1014,29 @@ class Viewer:
         return [*buttons, ("", self._footer_text())]
 
     def _footer_text(self) -> str:
+        # Present the direct image controls first. The dataset-wide A estimator is
+        # experimental: keep its binding everywhere, but advertise it only while
+        # the histogram's distribution and draggable limits are actually visible.
+        if self.histogram_mode:
+            hints = "H:image A:estimate/apply L:log l/u:limits drag:handles ?:help q:quit"
+            if self.show_help:
+                hints = "H:image | A:dataset auto | L:log/linear | l/u:exact limits | drag:handles"
+            return " " + hints + "\n " + safe_label(self.message)
+        axis_hint = ""
+        if self.navigation is not None:
+            axis_hint = ("d:axis " if len(self.navigation.axes) > 1 else "") + "[/]:step p:jump"
+        playback_hint = "P:play R:rate" if self.playback.available else ""
         if self.show_help:
-            return (" | m: artwork | M: ASCII | t: toggle color | q: quit\n"
-                    " Arrows: pan | +/-: zoom | r: fit | Tab: channels "
-                    "| d: axis | [/]: step | p: jump | P:play R:rate | H:hist A:auto")
-        return (" | P:play R:rate H:hist A:auto h:hue m:art M:ASCII ?:help q:quit\n "
-                + safe_label(self.message))
+            hints = "m/M:art/ASCII t:color b:blocks i:invert ?:help q:quit"
+            detail = "Arrows:pan +/-:zoom r:fit H:hist l/u/g:edit h:color"
+            if axis_hint:
+                detail += " " + axis_hint
+            if playback_hint:
+                detail += " " + playback_hint
+            return " " + hints + "\n " + detail
+        hints = ["H:hist", "l/u/g:edit", "h:color", axis_hint, playback_hint,
+                 "m/M:art", "?:help", "q:quit"]
+        return " " + " ".join(hint for hint in hints if hint) + "\n " + safe_label(self.message)
 
     def __repr__(self) -> str:
         return (f"Viewer(channels={self.selected_channels}, mode={self.renderer.mode!r}, "

@@ -527,3 +527,54 @@ def test_zt_real_terminal_navigation_and_restoration(stack_file):
     assert "\x1b[?1049h" in output and "\x1b[?1049l" in output
     assert "\x1b[?1006h" in output and "\x1b[?1006l" in output
     assert "\x1b[?25h" in output
+
+
+def test_public_multiseries_zt_demo_has_two_complete_t_z_series(tmp_path):
+    """The example exercises two full datasets, not a 2D concat or duplicated page."""
+    import importlib.util
+    from pathlib import Path
+
+    demo = Path(__file__).resolve().parents[1] / "examples" / "make_multiseries_zt_demo.py"
+    spec = importlib.util.spec_from_file_location("multiseries_demo", demo)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    path = tmp_path / "multi.ome.tif"
+    assert module.write_demo(path) == path
+    first_data, second_data = module.make_values()
+    with tifffile.TiffFile(path) as file:
+        assert len(file.series) == 2
+        assert tuple(series.axes for series in file.series) == ("TCZYX", "TCZYX")
+        assert tuple(series.name for series in file.series) == ("series_one", "series_two")
+    for series, expected in enumerate((first_data, second_data)):
+        doc = ImageDocument(path, series=series)
+        first = doc.initialize()  # Middle Z, first T within this selected series.
+        last = None
+        try:
+            assert doc.count == 2
+            assert first.position == (series, 3, 0)
+            assert first.image.channel_names == ("Disc", "Ring and marker")
+            last = doc.load_plane(series, z_index=6, t_index=3)
+            np.testing.assert_array_equal(last.image.asarray(), expected[3, :, 6])
+        finally:
+            if last is not None:
+                last.release()
+            first.release()
+            doc.close()
+    with pytest.raises(FileExistsError):
+        module.write_demo(path)
+
+
+async def test_footer_prioritizes_h_and_direct_windows_but_keeps_A_binding(stack_file):
+    async with browsing_stack(stack_file[0]) as (nav, viewer, pipe, _, task):
+        assert "H:hist" in viewer._footer_text()
+        assert "l/u/g:edit" in viewer._footer_text()
+        assert "d:axis" in viewer._footer_text()
+        assert "A:" not in viewer._footer_text()
+        pipe.send_text("H")
+        await eventually(lambda: viewer.histogram_mode, task)
+        assert "A:estimate/apply" in viewer._footer_text()
+        assert "l/u:limits" in viewer._footer_text()
+        pipe.send_text("H")
+        await eventually(lambda: not viewer.histogram_mode, task)
+        await ready(viewer, task)
+        assert "A:" not in viewer._footer_text()

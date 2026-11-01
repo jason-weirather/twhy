@@ -160,9 +160,10 @@ def main(
     """Explore OME-TIFF, Aperio SVS, ordinary images, or PDFs as terminal text.
 
     Wheel/+/- zoom, arrows or mouse drag pan, c toggles the channel panel.
-    PgUp/PgDn or [/] flip PDF pages/OME series; p jumps to a specific page/series.
+    d chooses the available Z/T/Series navigation axis; [/] step and p jumps.
     l/u/g edit limits and gamma; h edits channel color. H shows a histogram;
-    A estimates a fixed stack/image range; L switches histogram count scale.
+    A applies a dataset range estimate (experimental; inspect with H first).
+    L switches histogram count scale.
     m cycles artwork modes (color or mono); M cycles strict ASCII; t toggles color.
     s selects a rectangle; v starts a polygon; j copies GeoJSON; J saves it.
     Selection: y/Y text, i/I PNG, t/T ANSI, j/J GeoJSON (copy/save).

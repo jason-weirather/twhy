@@ -49,6 +49,18 @@ These are short, automatically looping recordings of `twhy` itself. Click any cl
 <small>Select rectangles or polygons; export GeoJSON, text, ANSI art, or PNG.</small>
 </td>
 </tr>
+<tr>
+<td width="50%" valign="top">
+<strong>Animated GIF in terminal ASCII</strong><br>
+<a href="https://github.com/jason-weirather/twhy/blob/main/docs/media/horse-animation.gif"><img src="https://raw.githubusercontent.com/jason-weirather/twhy/main/docs/media/horse-animation.gif" width="440" alt="Real twhy recording playing Muybridge's galloping horse as moving ASCII character art"></a><br>
+<small>Eadweard Muybridge's galloping horse, replayed as real terminal characters.</small>
+</td>
+<td width="50%" valign="top">
+<strong>Live-cell microscopy: Z and T</strong><br>
+<a href="https://github.com/jason-weirather/twhy/blob/main/docs/media/mitosis-zt.gif"><img src="https://raw.githubusercontent.com/jason-weirather/twhy/main/docs/media/mitosis-zt.gif" width="440" alt="Real twhy terminal recording of mitotic chromosomes in an IDR OME-Zarr Z/T stack"></a><br>
+<small>Fluorescence time series, navigating an IDR mitosis Z-stack.</small>
+</td>
+</tr>
 </table>
 
 ## Install
@@ -96,6 +108,19 @@ twhy slide.ome.tif --channel 0 --channel 2 \
 
 The initial view fits the image. Wheel zoom is anchored to the pointer; pan with the mouse or arrow keys. The terminal sidebar keeps channels, colors, and contrast controls at hand.
 
+**Navigating multidimensional images:** Press **`d`** to choose which available dimension you
+are stepping through: **Z**, **T**, or **Series** (for a file with multiple image
+series). Use **`[` / `]`** or PageUp/PageDown to step; **`p`**, a zero-based
+index, and Enter to jump. You can also click Z/T/Series in the top navigation
+bar. For example, in a two-series OME-TIFF with Z/T in each series, select
+Series with `d`, step into series 1, then select Z or T to browse that series.
+Each series has its own dimensional extents. Switching series fits the new image,
+resets its channel selection, and starts at middle Z and T=0; stepping Z/T inside
+one series preserves your camera and display limits. **`H`** opens a channel
+histogram with draggable lower/upper display limits and the experimental
+**`A`** dataset-wide recommendation; **`l`/`u`/`g`** remain the primary direct
+contrast/gamma controls in the image view.
+
 Z/T changes preserve the camera, channels, colors and contrast. OME time series
 start paused; press **P** for best-effort looping slideshow playback, **R** to set
 frames/second. Animated GIFs play and loop by default using their encoded delays.
@@ -125,8 +150,8 @@ pyramid. [Navigation, playback, limitations, and public test inputs](docs/z_t_su
 | Step/jump within that dimension | `]` / `[` or PageDown / PageUp; `p` to jump (PDF pages remain one-based) |
 | GIF / time playback | `P` plays/pauses; `R` sets 0.1–30 frames/s; animated GIFs loop by default |
 | Toggle a channel; focus another | Click channel/Space; `,` and `.` |
-| Histogram / dataset contrast | `H` toggles histogram; `A` estimates/applies a fixed range; `L` toggles log counts; drag `^L`/`^U` |
-| Adjust channel color or contrast | `h` (hue); `l`/`u` (limits); `g` (gamma); `a` (auto window) |
+| Inspect histogram / refine contrast | `H` toggles histogram; drag its lower/upper range handles; `L` toggles log counts |
+| Adjust channel color or contrast | `h` (hue); `l`/`u` (limits); `g` (gamma); `a` (preview auto window) |
 | Switch artwork / strict ASCII | `m` / `M`; `t` toggles artwork color; `f` toggles fullscreen |
 | Select region | `s` rectangle; `v` polygon |
 | Export a selection | `y/Y` text, `i/I` PNG, `t/T` ANSI, `j/J` GeoJSON (copy/save) |
@@ -136,8 +161,10 @@ pyramid. [Navigation, playback, limitations, and public test inputs](docs/z_t_su
 
 **H** replaces the image canvas with the focused channel's text histogram.
 Drag **^L / ^U**, or type exact values with **l/u**. **L** switches the count
-axis between log and linear. **A** applies a dataset-wide recommendation;
-**a** still estimates from the current visible preview. Channel focus changes
+axis between log and linear. The histogram view also offers the experimental
+**A** dataset-wide recommendation (the key still works in the normal view, but
+is not advertised there); **a** instead estimates from the currently visible
+preview. Channel focus changes
 which histogram is shown without changing image geometry.
 
 OME-TIFF and OME-Zarr intensity images (2D or Z/T) now try a small, bounded
@@ -218,6 +245,21 @@ python examples/make_demo.py --output-directory /tmp/twhy-demo
 twhy /tmp/twhy-demo/synthetic-mif.ome.tif --channel 0 --channel 2
 ```
 
+### Try a multi-series Z/T OME-TIFF
+
+`omeify concat` currently concatenates **2D observations**, not complete
+multidimensional series. For an independent two-series synthetic test that
+retains both time and depth in each series, use the included generator:
+
+```bash
+python examples/make_multiseries_zt_demo.py \
+  -o ~/Scratch/twhy-multiseries-zt.ome.tif
+twhy ~/Scratch/twhy-multiseries-zt.ome.tif
+```
+
+Press `d` until **Series** is selected, then `]` to change series. Choose Z or T
+with `d` to navigate the stack within it. No input microscope file is needed.
+
 ## Python API
 
 ```python
@@ -241,6 +283,17 @@ These GIFs are edited recordings of the real `twhy` terminal viewer. Showcase so
 - **H&E whole-slide demo:** `CMU-1.svs`, [OpenSlide test data](https://openslide.cs.cmu.edu/download/openslide-testdata/Aperio/), Carnegie Mellon University, CC0 1.0.
 - **PDF:** Vaswani, A. et al. (2017), [*Attention Is All You Need*](https://arxiv.org/abs/1706.03762), NeurIPS.
 - **Cat:** Illustration generated with ChatGPT (OpenAI).
+- **Galloping horse:** Eadweard Muybridge, *Animal Locomotion* (1887), plate 626;
+  animation assembled by Wikimedia Commons contributor Waugsberg (2006),
+  [source and public-domain status](https://commons.wikimedia.org/wiki/File:Muybridge_race_horse_animated.gif).
+  The showcase is a recording of twhy playing that public-domain GIF.
+- **Mitotic chromosomes (Z/T):** Walther N et al. (2018), *A quantitative map of
+  human Condensins provides new insights into mitotic chromosome architecture*,
+  *J. Cell Biol.* [doi:10.1083/jcb.201801048](https://doi.org/10.1083/jcb.201801048).
+  Image Data Resource [idr0052, image 5514375](https://idr.openmicroscopy.org/study/idr0052/),
+  [data DOI:10.17867/10000123](https://doi.org/10.17867/10000123),
+  [OME-NGFF sample catalog](https://idr.github.io/ome-ngff-samples/), **CC BY 4.0**.
+  The showcase is a recording of twhy viewing a derived OME-Zarr representation.
 
 ## License
 
