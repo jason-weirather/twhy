@@ -86,7 +86,7 @@ def test_xyz_pyramid_never_substitutes_a_different_z_observation(tmp_path, versi
 
 
 def test_http_plane_steps_reuse_chunks_without_metadata_rediscovery(tmp_path):
-    write_zarr_stack(tmp_path / "http.zarr")
+    values, _ = write_zarr_stack(tmp_path / "http.zarr")
     requests = []
     class Handler(SimpleHTTPRequestHandler):
         def do_GET(self):
@@ -98,15 +98,31 @@ def test_http_plane_steps_reuse_chunks_without_metadata_rediscovery(tmp_path):
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     doc = ImageDocument(f"http://127.0.0.1:{server.server_port}/http.zarr")
-    first = second = None
+    first = second = third = None
     try:
-        first = doc.initialize()
-        first.image.read_region(0, 8, 0, 8, channels=(0,))
+        first = doc.initialize()  # Z=2, T=0; chunks span T=3, C=2 and Z=2.
+        np.testing.assert_array_equal(first.image.read_region(0, 8, 0, 8, channels=(0,)),
+                                      values[0, 0:1, 2, :8, :8])
         requests.clear()
-        second = doc.load_plane(0, z_index=1, t_index=2)
-        second.image.read_region(0, 8, 0, 8, channels=(1,))
-        assert not requests
+        # A different time, channel and Z plane inside the SAME decoded chunk.
+        second = doc.load_plane(0, z_index=3, t_index=2)
+        assert second.dataset is first.dataset
+        np.testing.assert_array_equal(second.image.read_region(0, 8, 0, 8, channels=(1,)),
+                                      values[2, 1:2, 3, :8, :8])
+        assert not requests  # No chunk download and no metadata rediscovery.
+
+        # Crossing the Z chunk boundary must fetch data, not reopen metadata.
+        third = doc.load_plane(0, z_index=1, t_index=2)
+        assert third.dataset is first.dataset
+        np.testing.assert_array_equal(third.image.read_region(0, 8, 0, 8, channels=(1,)),
+                                      values[2, 1:2, 1, :8, :8])
+        assert requests and all("/0/c/" in path for path in requests)
+        requests.clear()
+        first.image.read_region(0, 8, 0, 8, channels=(0,))
+        assert not requests  # Returning to the original cached chunk stays local.
     finally:
+        if third is not None:
+            third.release()
         if second is not None:
             second.release()
         if first is not None:

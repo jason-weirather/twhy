@@ -369,9 +369,15 @@ async def test_failed_gif_read_pauses_and_keeps_previous_frame(tmp_path, monkeyp
         monkeypatch.setattr(doc.animation, "arrays", fail_later)
         viewer.playback.toggle()
         await eventually(lambda: not viewer.playback.playing and bool(nav.error), task)
+        # Error reporting can schedule another render of the still-active source.
+        # Preserve the complete visible artwork, not the Python object's identity.
+        await ready(viewer, task)
         assert "deliberate damaged GIF frame" in nav.error
         assert nav.active.index == 0 and nav.presented_name == previous_title
-        assert viewer.frame is previous_frame
+        assert previous_frame is not None and viewer.frame is not None
+        np.testing.assert_array_equal(viewer.frame.characters, previous_frame.characters)
+        np.testing.assert_array_equal(viewer.frame.foreground, previous_frame.foreground)
+        np.testing.assert_array_equal(viewer.frame.background, previous_frame.background)
         assert viewer.application.is_running
 
 
