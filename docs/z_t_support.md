@@ -139,6 +139,33 @@ Evicted frames are lazily decoded again. Omeify's existing TIFF/Zarr source cach
 remains separate and persistent throughout T navigation; there is no second
 OME decoder or T-volume memory cache.
 
+**Continuous OME playback performance:** While a T slideshow is playing, the
+idle render worker does not build whole-frame overviews of timepoints that
+will be discarded on the next transition. This prevents extra native reads
+from competing with the next requested frame. Normal paused browsing and
+manual Z/T navigation retain idle overview preparation, and pausing playback
+wakes the worker to resume it. There is no new decoder thread, prefetch queue,
+cache enlargement, or frame skipping. Omeify's existing optional prefetch
+is deliberately not activated: its shared 64 MiB native cache can fill with
+demanded blocks, after which speculative blocks are not admitted. Increasing
+thread count without addressing cache residency would add work, not fix a
+throughput cliff.
+
+To isolate slow source reads from resampling and text rendering on an actual
+stack, run this no-terminal probe in the matching twhy/Omeify environment:
+
+```bash
+python examples/benchmark_time_playback.py ~/Downloads/00001_01.ome.tiff \
+  --columns 100 --rows 30 > ~/Scratch/Test/twhy-zt/frame-timings.csv
+```
+
+The CSV has per-T setup, sampling and rendering milliseconds and native-cache
+hit/load/eviction counts. It omits terminal output, playback dwell, and idle
+overview construction. If sampling costs climb after cache eviction, inspect
+native TIFF chunk/strip layout; if only the live terminal slows, investigate
+terminal repaint and output throughput. A headless probe does not certify
+sustained interactive FPS. Compare matching terminal dimensions and renderer.
+
 ## Deterministic local examples
 
 ```bash

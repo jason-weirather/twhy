@@ -441,6 +441,11 @@ class Viewer:
             return
         if self.histogram_mode:
             return
+        # A T slideshow replaces its per-plane display cache on every step.
+        # Scanning a soon-to-be-discarded plane competes with foreground
+        # playback and may hold the worker in a native TIFF read.
+        if self.playback.kind == "time" and self.playback.playing:
+            return
         if self.navigation is not None and self.navigation.loading:
             return
         # Optional capability also keeps lightweight embedded session adapters usable.

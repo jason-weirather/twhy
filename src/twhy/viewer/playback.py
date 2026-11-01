@@ -84,6 +84,10 @@ class PlaybackController:
             self.playing = False
             self._deadline = None
             self._wake()
+            # A paused time series may resume the ordinary idle overview builder.
+            # The playback timer's wake event is separate from the render pump.
+            if self.kind == "time" and self.viewer._wake is not None:
+                self.viewer._wake.set()
 
     def toggle(self) -> None:
         if not self.available or self.viewer.selecting or self.viewer.editing is not None:

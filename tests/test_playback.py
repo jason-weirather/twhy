@@ -441,3 +441,62 @@ async def test_ome_t_mouse_drag_survives_playback_frame_handoffs(tmp_path):
         assert viewer.playback.playing
         mouse(MouseEventType.MOUSE_UP, 20, 11)
         assert viewer.canvas._drag is None
+
+
+async def test_time_playback_does_not_build_throwaway_overviews(tmp_path, monkeypatch):
+    """Live T playback must not scan a plane that is about to be replaced."""
+    from twhy.view_session import ViewSession
+
+    path = tmp_path / "animated.ome.tif"
+    write_stack(path)
+    doc = ImageDocument(path)
+    initial = doc.initialize()
+    nav = DocumentNavigation(doc, initial, overview_cache_mib=8)
+    with create_pipe_input() as pipe:
+        viewer = Viewer(nav.session, navigation=nav,
+                        renderer=TextRenderer(mode="blocks"),
+                        window=IntensityWindow(0, 40000),
+                        startup_overview_seconds=0, play_fps=9)
+        calls = []
+        original = ViewSession.step_overview
+
+        def track(self, channels=(0,)):
+            calls.append((self, viewer.playback.playing))
+            return original(self, channels)
+
+        monkeypatch.setattr(ViewSession, "step_overview", track)
+        task = asyncio.create_task(viewer.run(input=pipe, output=SizedOutput()))
+        try:
+            await ready(viewer, task)
+            viewer.playback.toggle()
+            await eventually(lambda: nav.active.t_index == 1 and not viewer.busy, task)
+            await eventually(lambda: nav.active.t_index == 2 and not viewer.busy, task)
+            assert viewer.playback.playing
+            # An overview read already in flight when playback began is allowed;
+            # the tracking records whether playback was active at submission.
+            assert not any(playing for _, playing in calls)
+
+            paused_at = len(calls)
+            viewer.playback.pause()
+            assert not viewer.playback.playing
+            # The pause wakes the idle worker even without another UI frame.
+            await eventually(lambda: len(calls) > paused_at, task)
+        finally:
+            if not task.done():
+                pipe.send_bytes(b"\x11")
+            await asyncio.wait_for(task, 15)
+
+
+def test_headless_time_playback_profiler_reports_cache_coverage(tmp_path):
+    from io import StringIO
+    from examples.benchmark_time_playback import profile
+
+    path = tmp_path / "headless-time.ome.tif"
+    write_stack(path)
+    csv = StringIO()
+    records = profile(str(path), first=0, stop=3, columns=25, rows=12, stream=csv)
+    assert [record["t"] for record in records] == [0, 1, 2]
+    assert records[-1]["source_loads"] >= 3
+    assert all(record["sampling_ms"] >= 0 for record in records)
+    assert all(record["source_samples"] > 0 for record in records)
+    assert "source_evictions" in csv.getvalue().splitlines()[0]
