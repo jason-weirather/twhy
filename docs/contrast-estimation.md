@@ -57,7 +57,9 @@ image canvas remains visible. Each new focus resets the timer; no transient chan
 is queued for sampling during rapid wheel/arrow navigation. An abandoned passive
 estimate stops at the next safe read boundary (not in the middle of a codec call).
 Cached results remain available until evicted by the existing payload cap, and
-background results **never adjust a displayed window**. `--no-stack-contrast`
+background results **never adjust a displayed window**. Passive preparation
+pauses during OME T playback so the next frame has priority, and resumes when
+playback is paused. Explicit user requests remain available. `--no-stack-contrast`
 disables automatic startup contrast and image-view focus precomputation; focus
 changes in the open histogram still wait 0.5 seconds before sampling. Explicit
 **H** and **A** remain available.

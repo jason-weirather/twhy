@@ -1,26 +1,29 @@
 # Depth and time navigation
 
-The initial Z/T implementation targeted twhy `35a38c8` and Omeify `74bf991`.
-The contrast/histogram refinement targets twhy `f8f0ece` and Omeify `6e926f2` (0.23.0). Omeify owns storage,
-axes, geometry and caches; twhy owns navigation and terminal presentation.
+Browse the Z sections, time points, and independent image series in an
+OME-TIFF or OME-Zarr without converting the source. Omeify handles storage and
+metadata; twhy keeps your camera and display settings as you move between planes.
 
 ## Installation
 
-Z/T support is included in the published **Omeify 0.23.1+**. Install twhy from
-this checkout to test its 0.3.0 functionality before publication; pip resolves
-the compatible Omeify release automatically. No Java or extra runtime is needed.
+Python 3.11+ is required. Install twhy normally; it automatically installs the
+compatible published **Omeify 0.23.1+**. No separate source checkout or Java
+runtime is needed.
+
+```bash
+uv tool install twhy
+# or: python -m pip install --upgrade twhy
+```
+
+To run the integration tests from a development checkout:
 
 ```bash
 python -m pip install -e '.[dev]'
 python -m pip check
-python -c 'import omeify; print(omeify.__version__); print(omeify.open_dataset)'
 python -m pytest -q tests/test_zt*.py tests/test_playback*.py tests/test_contrast*.py
 ```
 
-The minimum is the same for the plain installation and the optional S3 extra.
-Historical source commits above describe development provenance, not installation
-requirements. Validate the installed Omeify distribution in the complete test
-suite before publishing twhy.
+Optional S3 access uses `twhy[s3]`; ordinary local and HTTP(S) Zarr does not.
 
 ## Controls
 
@@ -148,11 +151,9 @@ remains separate and persistent throughout T navigation; there is no second
 OME decoder or T-volume memory cache.
 
 **Continuous OME playback performance:** While a T slideshow is playing, the
-idle render worker does not build whole-frame overviews of timepoints that
-will be discarded on the next transition. This prevents extra native reads
-from competing with the next requested frame. Normal paused browsing and
-manual Z/T navigation retain idle overview preparation, and pausing playback
-wakes the worker to resume it. There is no new decoder thread, prefetch queue,
+idle render worker does not build whole-frame overviews or prepare passive
+histograms that could compete with the next frame. Pausing resumes normal
+idle preparation. There is no new decoder thread, prefetch queue,
 cache enlargement, or frame skipping. Omeify's existing optional prefetch
 is deliberately not activated: its shared 64 MiB native cache can fill with
 demanded blocks, after which speculative blocks are not admitted. Increasing
@@ -259,8 +260,9 @@ a bounded base-pixel-guided estimate runs **before the first frame**, when fast
 enough. Otherwise the initial preview estimate is retained. In neither case
 does a later background computation silently change the displayed limits.
 Z/T navigation does not recalculate contrast; manual and explicit startup limits
-are preserved. `--no-stack-contrast` disables the initial sampling work. H/A
-request detailed histograms and explicit rewindowing on demand. See
+are preserved. `--no-stack-contrast` disables initial and passive contrast preparation. H
+still opens a histogram on demand, and A offers an explicit range suggestion.
+See
 [the method and histogram controls](contrast-estimation.md).
 
 The last completed character grid and its matching Z/T label remain visible

@@ -516,3 +516,56 @@ async def test_abandoned_background_estimate_stops_safely_after_inflight_read(st
         assert 1 not in viewer.contrast.results
         assert 1 not in viewer.contrast.completed
         assert not task.done()
+
+
+async def test_time_playback_defers_passive_histograms_until_paused(stack, monkeypatch):
+    """A slideshow must not sample an unseen histogram on each T frame."""
+    import twhy.viewer.contrast as contrast_ui
+
+    constructed = []
+    original = contrast_ui.ContrastEstimator
+
+    class CountedEstimator(original):
+        def __init__(self, source, *, channel=0, config=None):
+            constructed.append(channel)
+            super().__init__(source, channel=channel, config=config)
+
+    async with contrast_view(stack, automatic=True) as (viewer, _, _, _, task):
+        monkeypatch.setattr(contrast_ui, 'ContrastEstimator', CountedEstimator)
+        assert viewer.playback.kind == 'time'
+        viewer.playback.toggle()
+        assert viewer.playback.playing
+        await asyncio.sleep(.7)  # Longer than the half-second focus debounce.
+        assert not constructed and not viewer.contrast.queue
+        assert viewer.contrast.job is None
+        viewer.playback.pause()
+        await eventually(lambda: 0 in viewer.contrast.results, task)
+        assert constructed == [0]
+
+
+async def test_time_playback_abandons_inflight_passive_histogram(stack, monkeypatch):
+    """The current codec call can finish, but its abandoned job cannot continue."""
+    import twhy.contrast_sampling as sampling
+
+    entered, release = threading.Event(), threading.Event()
+    original_step = sampling.ContrastEstimator.step
+
+    def delayed_step(job):
+        if not entered.is_set():
+            entered.set()
+            assert release.wait(5)
+        return original_step(job)
+
+    monkeypatch.setattr(sampling.ContrastEstimator, 'step', delayed_step)
+    async with contrast_view(stack, automatic=True) as (viewer, _, _, _, task):
+        try:
+            await eventually(entered.is_set, task, timeout=4)
+            assert viewer.contrast.job is not None
+            viewer.playback.toggle()
+            assert viewer.playback.playing
+        finally:
+            release.set()
+        await eventually(lambda: viewer.contrast.job is None, task)
+        assert not viewer.contrast.results and not viewer.contrast.queue
+        viewer.playback.pause()
+        await eventually(lambda: 0 in viewer.contrast.results, task)

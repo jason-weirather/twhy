@@ -83,6 +83,8 @@ class PlaybackController:
         if self.playing:
             self.playing = False
             self._deadline = None
+            if self.kind == "time":
+                self.viewer.contrast.playback_changed()
             self._wake()
             # A paused time series may resume the ordinary idle overview builder.
             # The playback timer's wake event is separate from the render pump.
@@ -103,6 +105,8 @@ class PlaybackController:
                 self._deadline = asyncio.get_running_loop().time() + self._duration(
                     nav.display_position[0] if self.kind == "gif" else nav.display_position[2]
                 )
+            if self.kind == "time":
+                self.viewer.contrast.playback_changed()
             self._wake()
 
     def set_fps(self, fps: float) -> None:

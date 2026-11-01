@@ -1,4 +1,11 @@
-# twhy 0.2: Omeify 0.18 migration validation
+# Engineering validation history
+
+This is a dated record of earlier development and dependency configurations,
+not a current installation or release checklist. See `README.md` and
+`pyproject.toml` for the supported version and installation requirements.
+The historical results below are retained as recorded.
+
+## twhy 0.2: Omeify 0.18 migration validation
 
 This update targets the supplied `2269e1c1db738e83e36ab9a120980dd61ed3ef9e`
 snapshot. It replaces the old file-only adapter with a ViewSession borrowing an

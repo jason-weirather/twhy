@@ -1,5 +1,10 @@
 # Contrast/histogram refinement: validation record
 
+> Historical engineering validation from the original development snapshot.
+> Its version references and test totals describe that snapshot, not the latest
+> release. Current requirements are in `pyproject.toml`; run the full suite
+> against published Omeify before tagging a release.
+
 ## Exact inputs and scope
 
 - twhy `f8f0ece3e70199f87afe609fcd2b11e7060deed3`, branch `t_z_support`, v0.3.0.

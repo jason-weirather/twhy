@@ -471,8 +471,9 @@ concave intersection is rejected with a request to select its parts separately.
 No new geometry dependency is introduced.
 
 The channel list has focus-specific PageUp/PageDown and Home/End handling;
-canvas document navigation and bracket shortcuts are unchanged. Focus changes
-alone do not sample pixels. Enter solos any focused channel. Adaptive sidebar
+canvas document navigation and bracket shortcuts are unchanged. Focus changes never read pixels synchronously. When automatic contrast
+preparation is enabled, a stable focus may schedule a histogram after 0.5 s;
+continuous T playback defers that passive work. Enter solos any focused channel. Adaptive sidebar
 content reserves more rows for channels rather than increasing sidebar width.
 `ModeNavigation` remembers the active `m` artwork renderer
 (detail/shape/simple/blocks), its **independent color preference**, and a

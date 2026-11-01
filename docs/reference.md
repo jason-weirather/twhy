@@ -34,7 +34,7 @@ twhy photograph.png
 
 For a **CLI-only installation**, `pipx` or `uv tool` is a good fit: either gives
 `twhy` its own Python environment rather than changing NumPy, Numba, or other
-packages in an existing analysis environment (once the distribution is published):
+packages in an existing analysis environment:
 
 ```bash
 pipx install twhy
@@ -722,13 +722,13 @@ gamma must be finite and positive. Invalid numeric edits stay in the editor rath
 than crashing the viewer or silently accepting a different value.
 
 Unsigned RGB starts with its dtype's full intensity range and a shared window for
-all three RGB samples, preserving their relative balance. Other image channels
-initially use the 1st and 99.5th percentiles of the first finite preview, with explicit
-constant/sparse-field handling. These are **preview-based estimates**, not a
-whole-slide stain-normalization procedure. Zeros participate. Initial windows
-remain fixed as the camera moves. Pressing `a` deliberately re-estimates the focused
-channel from the current visible preview; manual `l/u` values remain in raw units. Gamma is dimensionless and is preserved
-when `a` re-estimates the lower and upper limits.
+all three RGB samples, preserving their relative balance. Scalar OME-TIFF and
+OME-Zarr channels try a bounded source-informed estimate before the first image;
+other scalar inputs use the first finite preview. Either way, initial limits stay
+fixed as the camera moves. These are display estimates, not stain normalization
+or a claim to identify biological signal. Zeros participate. Press `a` to
+re-estimate the focused channel from the visible preview. Manual `l/u` values
+remain in raw units, and `a` preserves the current gamma.
 
 Multiplex composition windows each selected channel separately, adds a deterministic
 pseudocolor, and clips the composite. Default colors are assigned by channel index,
@@ -792,8 +792,9 @@ start at middle Z/T=0 without starting a stack contrast scan.
 
 After channel focus stays unchanged for 0.5 seconds, the detailed full
 distribution is prepared while the image remains visible. Rapid channel navigation
-restarts the delay, dropping obsolete passive requests. A started estimate stops
-cooperatively at its next safe read boundary if focus moves elsewhere. Completed
+restarts the delay, dropping obsolete passive requests. Continuous T playback
+defers this passive work; pausing resumes preparation. A started estimate stops
+cooperatively at its next safe read boundary if focus moves elsewhere or playback starts. Completed
 results remain cached; they never silently replace display limits. The
 `--no-stack-contrast` switch also disables this image-view precomputation, but
 not deliberate histogram viewing or explicit H/A requests. H opens immediately even if the estimate has not been
@@ -1000,7 +1001,7 @@ if __name__ == "__main__":  # Required for spawned PDF workers in executable scr
 mode is an explicit TextRenderer mode (`blocks` by default); CLI `auto` selection
 still belongs to the CLI. Importing the array renderer does not start workers.
 
-## Image-backed Python use (0.2)
+## Image-backed Python use
 
 The former twhy `OmeTiffSource` class is removed. Omeify owns the Image/source
 contract and TIFF interpretation; `open_image()` is a small file-ingress helper

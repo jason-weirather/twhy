@@ -81,10 +81,8 @@ From a cloned checkout, for development:
 python -m pip install -e '.[dev]'
 ```
 
-Z/T navigation requires **Omeify 0.23.1 or newer**, available on PyPI and
-installed automatically by pip or uv through twhy's dependency declaration.
-For the twhy 0.3.0 functionality in this checkout before its own PyPI release,
-use the development installation above. [Z/T setup and examples](docs/z_t_support.md).
+Z/T navigation uses **Omeify 0.23.1 or newer**, installed automatically as a
+package dependency. [Z/T navigation and examples](docs/z_t_support.md).
 
 PDF support is **included** in the standard install. No special extra or system PDF converter is needed.
 
@@ -116,10 +114,9 @@ bar. For example, in a two-series OME-TIFF with Z/T in each series, select
 Series with `d`, step into series 1, then select Z or T to browse that series.
 Each series has its own dimensional extents. Switching series fits the new image,
 resets its channel selection, and starts at middle Z and T=0; stepping Z/T inside
-one series preserves your camera and display limits. **`H`** opens a channel
-histogram with draggable lower/upper display limits and the experimental
-**`A`** dataset-wide recommendation; **`l`/`u`/`g`** remain the primary direct
-contrast/gamma controls in the image view.
+one series preserves your camera and display limits. **`H`** opens the focused
+channel's histogram, with draggable lower/upper display limits; **`l`/`u`/`g`**
+remain the primary direct contrast/gamma controls in the image view.
 
 Z/T changes preserve the camera, channels, colors and contrast. OME time series
 start paused; press **P** for best-effort looping slideshow playback, **R** to set
@@ -157,37 +154,25 @@ pyramid. [Navigation, playback, limitations, and public test inputs](docs/z_t_su
 | Export a selection | `y/Y` text, `i/I` PNG, `t/T` ANSI, `j/J` GeoJSON (copy/save) |
 | Help or quit | `?` / `q` |
 
-## Fast contrast estimation and channel histograms
+## Channel histograms and display contrast
 
-The focused channel's full distribution is prepared after **0.5 seconds** without
-channel-focus movement, even while the image remains visible. Rapid sidebar wheel,
-arrow, and click navigation cancels the pending request for intermediate channels.
-Background results never change the displayed limits. `--no-stack-contrast`
-disables automatic image-view preparation. **H** immediately opens the
-histogram (starting the estimate immediately if it is not already cached).
-Drag **^L / ^U**, or type exact values with **l/u**. **L** switches the count
-axis between log and linear. The histogram view also offers the experimental
-**A** dataset-wide recommendation (the key still works in the normal view, but
-is not advertised there); **a** instead estimates from the currently visible
-preview. Channel focus changes
-which histogram is shown without changing image geometry.
+Press **H** to inspect the focused channel's intensity distribution. Drag the
+**^L / ^U** markers to adjust the display range, or enter exact limits with
+**l / u**; **g** adjusts gamma. **L** switches between logarithmic and linear
+histogram counts. These controls affect only the display, not the source pixels.
 
-OME-TIFF and OME-Zarr intensity images (2D or Z/T) now try a small, bounded
-base-pixel estimate **before** the first image frame. The chosen limits remain
-fixed across navigation: there is no delayed automatic brightness jump. A slow
-source falls back to the preview estimate without changing it later. Use
-`--no-stack-contrast` to skip this initial work. **H** requests a detailed
-histogram without altering the displayed range; **A** explicitly applies its
-recommendation.
+twhy starts preparing the focused channel after a short pause, so opening
+**H** can reuse a ready histogram. Scrolling through channels does not queue
+work for every channel you pass. Time-series playback takes priority over this background work.
+Display limits stay fixed as you move through Z, T, or the image; preparation
+never changes them behind your back. Histograms of large images are estimates,
+not exhaustive pixel counts.
 
-The reusable `estimate_contrast(image_or_dataset, channel=...)` library uses a
-coarse pilot to guide probability-weighted **base-resolution** tile samples.
-It returns a detached histogram, suggested limits, coverage and uncertainty
-warnings without importing the terminal UI. The highlight-preserving policy is
-separate from the population histogram; it is not a biological signal detector.
-Rare unseen features remain possible, and a hot pixel can influence the range.
+In the histogram view, **A** offers an experimental suggested display range,
+applied only when you ask. Lowercase **a** retains its existing visible-preview
+auto-window behavior. Use `--no-stack-contrast` to turn off automatic preparation.
 
-[Method, library API, budgets, limitations and research references](docs/contrast-estimation.md).
+[Method, Python API, sampling limits and caveats](docs/contrast-estimation.md).
 
 ## From terminal annotations to full-resolution ROIs
 
@@ -252,9 +237,8 @@ twhy /tmp/twhy-demo/synthetic-mif.ome.tif --channel 0 --channel 2
 
 ### Try a multi-series Z/T OME-TIFF
 
-`omeify concat` currently concatenates **2D observations**, not complete
-multidimensional series. For an independent two-series synthetic test that
-retains both time and depth in each series, use the included generator:
+To try a TIFF containing two separate image series, each with its own Z and T
+axes, use the included synthetic example:
 
 ```bash
 python examples/make_multiseries_zt_demo.py \

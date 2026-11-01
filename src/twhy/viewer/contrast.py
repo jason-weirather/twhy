@@ -93,6 +93,27 @@ class ContrastController:
             self._idle_timer.cancel()
             self._idle_timer = None
 
+    def _time_playing(self):
+        return self.viewer.playback.kind == "time" and self.viewer.playback.playing
+
+    def playback_changed(self):
+        """Keep passive analysis out of an active time slideshow's read budget."""
+        if self.viewer.playback.kind != "time":
+            return
+        if self._time_playing():
+            self._cancel_idle()
+            # An explicit apply request may still proceed, but idle preparation
+            # must not compete with frame decoding or hold the next T plane.
+            for channel, apply in list(self.queue.items()):
+                if not apply:
+                    del self.queue[channel]
+            if self.job is not None and not self.job_apply:
+                self.job_abandon = True  # Cooperatively, after any native read.
+        else:
+            self._schedule_idle()
+        if self.viewer._wake is not None:
+            self.viewer._wake.set()
+
     def focus_changed(self):
         """Debounce channel focus, without starting reads for transient scroll stops."""
         self.sync_source()
@@ -120,6 +141,7 @@ class ContrastController:
                 (viewer.session.info.is_rgb and not viewer.histogram_mode) or
                 viewer._wake is None or (viewer.frame is None and not viewer.histogram_mode) or
                 viewer.selecting or viewer.editing is not None or
+                self._time_playing() or
                 (viewer.navigation is not None and viewer.navigation.loading) or
                 self.source is None or channel in self.completed or
                 channel in self.results or channel in self.errors or
@@ -137,6 +159,7 @@ class ContrastController:
                 (not self.automatic and not viewer.histogram_mode) or
                 (viewer.session.info.is_rgb and not viewer.histogram_mode) or
                 viewer.selecting or viewer.editing is not None or
+                self._time_playing() or
                 (viewer.navigation is not None and viewer.navigation.loading)):
             return
         # Only warm the detached distribution. Never rewindow a displayed image.
